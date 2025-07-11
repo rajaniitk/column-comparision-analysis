@@ -1789,7 +1789,11 @@ body.dark-theme .error {
 }
 
 .comp-tab-content.active {
-    display: block;
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    height: auto !important;
+    min-height: 200px !important;
 }
 
 .statistic-section {
@@ -1851,6 +1855,15 @@ body.dark-theme .error {
     background: white;
     border-radius: 6px;
     overflow: hidden;
+    border: 2px solid #3498db !important;
+}
+
+.statistics-comparison {
+    background: #e3f2fd !important;
+    border: 3px solid #2196f3 !important;
+    border-radius: 8px !important;
+    padding: 20px !important;
+    margin: 10px 0 !important;
 }
 
 .statistics-table th,
