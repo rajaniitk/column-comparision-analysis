@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
-from scipy import stats
+from scipy import stats as scipy_stats
+from scipy.stats import f_oneway, kruskal, pearsonr, spearmanr, ttest_ind, ks_2samp, chi2_contingency, skew, kurtosis
 from sklearn.feature_selection import mutual_info_classif, mutual_info_regression
 from sklearn.preprocessing import LabelEncoder
 from models import Dataset, ComparisonResult, db
@@ -108,7 +109,7 @@ class Comparison:
              
              # Perform statistical tests with proper error handling
              try:
-                 correlation, p_value_corr = stats.pearsonr(clean_data[column1], clean_data[column2])
+                 correlation, p_value_corr = pearsonr(clean_data[column1], clean_data[column2])
                  # Handle NaN p-values
                  if pd.isna(p_value_corr):
                      p_value_corr = 1.0
@@ -116,7 +117,7 @@ class Comparison:
                  correlation, p_value_corr = 0.0, 1.0
                  
              try:
-                 spearman_corr, p_value_spearman = stats.spearmanr(clean_data[column1], clean_data[column2])
+                 spearman_corr, p_value_spearman = spearmanr(clean_data[column1], clean_data[column2])
                  if pd.isna(p_value_spearman):
                      p_value_spearman = 1.0
              except Exception:
@@ -124,7 +125,7 @@ class Comparison:
              
              # T-test for difference in means
              try:
-                 t_stat, p_value_ttest = stats.ttest_ind(clean_data[column1], clean_data[column2])
+                 t_stat, p_value_ttest = ttest_ind(clean_data[column1], clean_data[column2])
                  if pd.isna(p_value_ttest):
                      p_value_ttest = 1.0
              except Exception:
@@ -132,7 +133,7 @@ class Comparison:
              
              # Kolmogorov-Smirnov test for distribution difference
              try:
-                 ks_stat, p_value_ks = stats.ks_2samp(clean_data[column1], clean_data[column2])
+                 ks_stat, p_value_ks = ks_2samp(clean_data[column1], clean_data[column2])
                  if pd.isna(p_value_ks):
                      p_value_ks = 1.0
              except Exception:
@@ -143,7 +144,7 @@ class Comparison:
              
              # Basic statistics with proper error handling
              try:
-                 stats1 = {
+                 col1_stats = {
                      'count': len(clean_data[column1]),
                      'mean': float(clean_data[column1].mean()),
                      'median': float(clean_data[column1].median()),
@@ -153,11 +154,11 @@ class Comparison:
                      'unique_values': int(clean_data[column1].nunique())
                  }
              except Exception as e:
-                 self.logger.warning(f"Error calculating stats for {column1}: {str(e)}")
-                 stats1 = {'error': 'Unable to calculate statistics'}
+                 self.logger.warning(f"Error calculating statistics for {column1}: {str(e)}")
+                 col1_stats = {'error': 'Unable to calculate statistics'}
                  
              try:
-                 stats2 = {
+                 col2_stats = {
                      'count': len(clean_data[column2]),
                      'mean': float(clean_data[column2].mean()),
                      'median': float(clean_data[column2].median()),
@@ -167,8 +168,8 @@ class Comparison:
                      'unique_values': int(clean_data[column2].nunique())
                  }
              except Exception as e:
-                 self.logger.warning(f"Error calculating stats for {column2}: {str(e)}")
-                 stats2 = {'error': 'Unable to calculate statistics'}
+                 self.logger.warning(f"Error calculating statistics for {column2}: {str(e)}")
+                 col2_stats = {'error': 'Unable to calculate statistics'}
              
              results = {
                  'comparison_type': 'numerical',
@@ -199,8 +200,8 @@ class Comparison:
                      'interpretation': self._interpret_cohens_d(cohens_d)
                  },
                  'descriptive_stats': {
-                     column1: stats1,
-                     column2: stats2
+                     column1: col1_stats,
+                     column2: col2_stats
                  },
                  'recommendations': self._get_numerical_recommendations(correlation, p_value_corr, cohens_d)
              }
@@ -239,7 +240,7 @@ class Comparison:
                  
                  # Chi-square test with proper error handling
                  try:
-                     chi2, p_value, dof, expected = stats.chi2_contingency(contingency_table)
+                     chi2, p_value, dof, expected = chi2_contingency(contingency_table)
                      if pd.isna(chi2):
                          chi2 = 0.0
                      if pd.isna(p_value):
@@ -371,14 +372,14 @@ class Comparison:
                  
                  # Convert to dictionary format with proper handling of NaN values
                  group_stats = {}
-                 for group_name, stats in group_stats_raw.iterrows():
+                 for group_name, group_stat_values in group_stats_raw.iterrows():
                      group_stats[str(group_name)] = {
-                         'count': int(stats['count']) if not pd.isna(stats['count']) else 0,
-                         'mean': float(stats['mean']) if not pd.isna(stats['mean']) else 0.0,
-                         'std': float(stats['std']) if not pd.isna(stats['std']) else 0.0,
-                         'min': float(stats['min']) if not pd.isna(stats['min']) else 0.0,
-                         'max': float(stats['max']) if not pd.isna(stats['max']) else 0.0,
-                         'median': float(stats['median']) if not pd.isna(stats['median']) else 0.0
+                         'count': int(group_stat_values['count']) if not pd.isna(group_stat_values['count']) else 0,
+                         'mean': float(group_stat_values['mean']) if not pd.isna(group_stat_values['mean']) else 0.0,
+                         'std': float(group_stat_values['std']) if not pd.isna(group_stat_values['std']) else 0.0,
+                         'min': float(group_stat_values['min']) if not pd.isna(group_stat_values['min']) else 0.0,
+                         'max': float(group_stat_values['max']) if not pd.isna(group_stat_values['max']) else 0.0,
+                         'median': float(group_stat_values['median']) if not pd.isna(group_stat_values['median']) else 0.0
                      }
              except Exception as e:
                  self.logger.warning(f"Error calculating group statistics: {str(e)}")
@@ -392,7 +393,7 @@ class Comparison:
                  if len(groups) < 2:
                      f_stat, p_value_anova = 0.0, 1.0
                  else:
-                     f_stat, p_value_anova = stats.f_oneway(*groups)
+                     f_stat, p_value_anova = f_oneway(*groups)
                      if pd.isna(f_stat):
                          f_stat = 0.0
                      if pd.isna(p_value_anova):
@@ -408,7 +409,7 @@ class Comparison:
              # Kruskal-Wallis test (non-parametric alternative)
              try:
                  if len(groups) >= 2:
-                     h_stat, p_value_kw = stats.kruskal(*groups)
+                     h_stat, p_value_kw = kruskal(*groups)
                      if pd.isna(h_stat):
                          h_stat = 0.0
                      if pd.isna(p_value_kw):
@@ -504,7 +505,7 @@ class Comparison:
              for i, col1 in enumerate(numeric_columns):
                  for col2 in numeric_columns[i+1:]:
                      # Kolmogorov-Smirnov test
-                     ks_stat, p_value = stats.ks_2samp(clean_data[col1], clean_data[col2])
+                     ks_stat, p_value = ks_2samp(clean_data[col1], clean_data[col2])
                      
                      comparisons[f"{col1}_vs_{col2}"] = {
                          'ks_statistic': ks_stat,
@@ -515,19 +516,19 @@ class Comparison:
              # Overall statistics for each column
              distribution_stats = {}
              for col in numeric_columns:
-                 stats_dict = get_safe_stats(clean_data, [col])[col]
+                 column_stats_dict = get_safe_stats(clean_data, [col])[col]
                  
                  # Add distribution properties
-                 skewness = stats.skew(clean_data[col].dropna())
-                 kurtosis = stats.kurtosis(clean_data[col].dropna())
+                 skewness_val = skew(clean_data[col].dropna())
+                 kurtosis_val = kurtosis(clean_data[col].dropna())
                  
-                 stats_dict.update({
-                     'skewness': skewness,
-                     'kurtosis': kurtosis,
-                     'distribution_shape': self._interpret_skewness(skewness)
+                 column_stats_dict.update({
+                     'skewness': skewness_val,
+                     'kurtosis': kurtosis_val,
+                     'distribution_shape': self._interpret_skewness(skewness_val)
                  })
                  
-                 distribution_stats[col] = stats_dict
+                 distribution_stats[col] = column_stats_dict
              
              results = {
                  'comparison_type': 'distributions',

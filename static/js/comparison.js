@@ -317,6 +317,8 @@ document.addEventListener('DOMContentLoaded', function() {
     
     async function performDatasetComparison(datasetIds) {
         try {
+            console.log('Starting dataset comparison with IDs:', datasetIds);
+            
             const response = await fetch('/api/comparison/datasets', {
                 method: 'POST',
                 headers: {
@@ -325,19 +327,26 @@ document.addEventListener('DOMContentLoaded', function() {
                 body: JSON.stringify({ dataset_ids: datasetIds })
             });
 
+            console.log('Dataset comparison response status:', response.status);
+
             if (!response.ok) {
                 const errorText = await response.text();
+                console.error('Dataset comparison failed with error:', errorText);
                 throw new Error(`HTTP ${response.status}: ${errorText}`);
             }
 
             const data = await response.json();
+            console.log('Dataset comparison response data:', data);
+            
             if (data.success) {
+                console.log('Dataset comparison successful, returning data:', data.comparison);
                 return data.comparison;
             } else {
+                console.error('Dataset comparison returned unsuccessful:', data.error);
                 throw new Error(data.error || 'Failed to compare datasets');
             }
         } catch (error) {
-            console.error('Error comparing datasets:', error);
+            console.error('Error in performDatasetComparison:', error);
             
             // Return error structure instead of dummy data
             return {
@@ -359,10 +368,18 @@ document.addEventListener('DOMContentLoaded', function() {
     // These functions were removed - using real data from backend instead of dummy data
     
     function displayDatasetComparison(comparison) {
+        console.log('Displaying dataset comparison:', comparison);
+        
         const container = document.getElementById('comparison-results');
+        
+        if (!container) {
+            console.error('comparison-results container not found');
+            return;
+        }
         
         // Check if there's an error or no data
         if (comparison.error || !comparison.overview || !comparison.overview.datasets || comparison.overview.datasets.length === 0) {
+            console.log('Displaying error in dataset comparison:', comparison.error);
             container.innerHTML = `
                 <div class="comparison-error">
                     <h3>Dataset Comparison Error</h3>
@@ -381,6 +398,8 @@ document.addEventListener('DOMContentLoaded', function() {
             container.style.display = 'block';
             return;
         }
+        
+        console.log('Generating HTML for comparison results');
         
         let html = `
             <div class="comparison-header">
@@ -411,6 +430,7 @@ document.addEventListener('DOMContentLoaded', function() {
             </div>
         `;
         
+        console.log('Setting innerHTML for comparison results');
         container.innerHTML = html;
         container.style.display = 'block';
         
@@ -421,6 +441,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 switchTab(e.target.getAttribute('data-tab'));
             });
         });
+        
+        console.log('Dataset comparison display completed');
     }
     
     function generateOverviewHTML(overview) {
