@@ -1805,6 +1805,16 @@ body.dark-theme .error {
     font-size: 1.1em;
 }
 
+.column-type {
+    font-size: 0.8em;
+    color: #666;
+    font-weight: normal;
+    background: #e8f4fd;
+    padding: 2px 8px;
+    border-radius: 12px;
+    margin-left: 10px;
+}
+
 .statistics-table {
     width: 100%;
     border-collapse: collapse;

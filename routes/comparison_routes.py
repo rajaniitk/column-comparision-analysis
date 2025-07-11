@@ -139,36 +139,82 @@ def compare_datasets():
                 numerical_cols = [col for col in common_columns 
                                  if pd.api.types.is_numeric_dtype(df1[col]) and pd.api.types.is_numeric_dtype(df2[col])]
                 
+                current_app.logger.info(f"Found {len(numerical_cols)} common numerical columns: {numerical_cols}")
+                
                 for col in numerical_cols[:5]:  # Limit to first 5 for performance
                     try:
-                        stats1 = {
-                            'mean': float(df1[col].mean()),
-                            'median': float(df1[col].median()),
-                            'std': float(df1[col].std()),
-                            'min': float(df1[col].min()),
-                            'max': float(df1[col].max())
+                        # Ensure we have enough data for meaningful statistics
+                        col1_clean = df1[col].dropna()
+                        col2_clean = df2[col].dropna()
+                        
+                        if len(col1_clean) == 0 or len(col2_clean) == 0:
+                            current_app.logger.warning(f"Column {col} has no valid data")
+                            continue
+                            
+                        dataset1_stats = {
+                            'mean': float(col1_clean.mean()) if not pd.isna(col1_clean.mean()) else 0.0,
+                            'median': float(col1_clean.median()) if not pd.isna(col1_clean.median()) else 0.0,
+                            'std': float(col1_clean.std()) if not pd.isna(col1_clean.std()) else 0.0,
+                            'min': float(col1_clean.min()) if not pd.isna(col1_clean.min()) else 0.0,
+                            'max': float(col1_clean.max()) if not pd.isna(col1_clean.max()) else 0.0,
+                            'count': len(col1_clean)
                         }
-                        stats2 = {
-                            'mean': float(df2[col].mean()),
-                            'median': float(df2[col].median()),
-                            'std': float(df2[col].std()),
-                            'min': float(df2[col].min()),
-                            'max': float(df2[col].max())
+                        dataset2_stats = {
+                            'mean': float(col2_clean.mean()) if not pd.isna(col2_clean.mean()) else 0.0,
+                            'median': float(col2_clean.median()) if not pd.isna(col2_clean.median()) else 0.0,
+                            'std': float(col2_clean.std()) if not pd.isna(col2_clean.std()) else 0.0,
+                            'min': float(col2_clean.min()) if not pd.isna(col2_clean.min()) else 0.0,
+                            'max': float(col2_clean.max()) if not pd.isna(col2_clean.max()) else 0.0,
+                            'count': len(col2_clean)
                         }
                         
                         comparison_result['statistical_comparison'].append({
                             'column': col,
                             'dataset1': {
                                 'name': datasets[0].filename,
-                                'statistics': stats1
+                                'statistics': dataset1_stats
                             },
                             'dataset2': {
                                 'name': datasets[1].filename,
-                                'statistics': stats2
+                                'statistics': dataset2_stats
                             }
                         })
+                        current_app.logger.info(f"Successfully generated statistics for column {col}")
                     except Exception as e:
-                        logging.warning(f"Could not generate statistics for column {col}: {str(e)}")
+                        current_app.logger.error(f"Could not generate statistics for column {col}: {str(e)}")
+                        
+                # If no numerical columns, add at least basic column type comparison
+                if len(comparison_result['statistical_comparison']) == 0:
+                    for col in common_columns[:5]:  # Show first 5 common columns regardless of type
+                        try:
+                            col1_type = str(df1[col].dtype)
+                            col2_type = str(df2[col].dtype)
+                            col1_unique = int(df1[col].nunique())
+                            col2_unique = int(df2[col].nunique())
+                            
+                            comparison_result['statistical_comparison'].append({
+                                'column': col,
+                                'dataset1': {
+                                    'name': datasets[0].filename,
+                                    'statistics': {
+                                        'data_type': col1_type,
+                                        'unique_values': col1_unique,
+                                        'null_count': int(df1[col].isnull().sum()),
+                                        'total_count': len(df1[col])
+                                    }
+                                },
+                                'dataset2': {
+                                    'name': datasets[1].filename,
+                                    'statistics': {
+                                        'data_type': col2_type,
+                                        'unique_values': col2_unique,
+                                        'null_count': int(df2[col].isnull().sum()),
+                                        'total_count': len(df2[col])
+                                    }
+                                }
+                            })
+                        except Exception as e:
+                            current_app.logger.error(f"Could not generate basic statistics for column {col}: {str(e)}")
                         
             except Exception as e:
                 logging.warning(f"Could not perform detailed schema comparison: {str(e)}")

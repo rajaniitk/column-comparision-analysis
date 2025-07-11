@@ -527,58 +527,124 @@ document.addEventListener('DOMContentLoaded', function() {
     
     function generateStatisticsHTML(statistics) {
         if (!statistics || statistics.length === 0) {
-            return '<p>No statistical comparison data available. Try selecting datasets with common numerical columns.</p>';
+            return '<p>No statistical comparison data available. This might happen if the datasets have no common columns or if the columns contain mostly non-numerical data.</p>';
         }
         
         return `
             <div class="statistics-comparison">
-                ${statistics.map(stat => `
-                    <div class="statistic-section">
-                        <h5>Column: ${stat.column}</h5>
-                        <table class="statistics-table">
-                            <thead>
-                                <tr>
-                                    <th>Metric</th>
-                                    <th>${stat.dataset1.name}</th>
-                                    <th>${stat.dataset2.name}</th>
-                                    <th>Difference</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr>
-                                    <td><strong>Mean</strong></td>
-                                    <td>${stat.dataset1.statistics.mean.toFixed(3)}</td>
-                                    <td>${stat.dataset2.statistics.mean.toFixed(3)}</td>
-                                    <td>${Math.abs(stat.dataset1.statistics.mean - stat.dataset2.statistics.mean).toFixed(3)}</td>
-                                </tr>
-                                <tr>
-                                    <td><strong>Median</strong></td>
-                                    <td>${stat.dataset1.statistics.median.toFixed(3)}</td>
-                                    <td>${stat.dataset2.statistics.median.toFixed(3)}</td>
-                                    <td>${Math.abs(stat.dataset1.statistics.median - stat.dataset2.statistics.median).toFixed(3)}</td>
-                                </tr>
-                                <tr>
-                                    <td><strong>Std Dev</strong></td>
-                                    <td>${stat.dataset1.statistics.std.toFixed(3)}</td>
-                                    <td>${stat.dataset2.statistics.std.toFixed(3)}</td>
-                                    <td>${Math.abs(stat.dataset1.statistics.std - stat.dataset2.statistics.std).toFixed(3)}</td>
-                                </tr>
-                                <tr>
-                                    <td><strong>Min</strong></td>
-                                    <td>${stat.dataset1.statistics.min.toFixed(3)}</td>
-                                    <td>${stat.dataset2.statistics.min.toFixed(3)}</td>
-                                    <td>${Math.abs(stat.dataset1.statistics.min - stat.dataset2.statistics.min).toFixed(3)}</td>
-                                </tr>
-                                <tr>
-                                    <td><strong>Max</strong></td>
-                                    <td>${stat.dataset1.statistics.max.toFixed(3)}</td>
-                                    <td>${stat.dataset2.statistics.max.toFixed(3)}</td>
-                                    <td>${Math.abs(stat.dataset1.statistics.max - stat.dataset2.statistics.max).toFixed(3)}</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                `).join('')}
+                ${statistics.map(stat => {
+                    const stats1 = stat.dataset1.statistics;
+                    const stats2 = stat.dataset2.statistics;
+                    
+                    // Check if this is numerical statistics or basic statistics
+                    const isNumerical = stats1.hasOwnProperty('mean') && stats2.hasOwnProperty('mean');
+                    
+                    if (isNumerical) {
+                        // Numerical statistics table
+                        return `
+                            <div class="statistic-section">
+                                <h5>Column: ${stat.column} <span class="column-type">(Numerical)</span></h5>
+                                <table class="statistics-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Metric</th>
+                                            <th>${stat.dataset1.name}</th>
+                                            <th>${stat.dataset2.name}</th>
+                                            <th>Difference</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td><strong>Count</strong></td>
+                                            <td>${stats1.count || 'N/A'}</td>
+                                            <td>${stats2.count || 'N/A'}</td>
+                                            <td>${stats1.count && stats2.count ? Math.abs(stats1.count - stats2.count) : 'N/A'}</td>
+                                        </tr>
+                                        <tr>
+                                            <td><strong>Mean</strong></td>
+                                            <td>${typeof stats1.mean === 'number' ? stats1.mean.toFixed(3) : 'N/A'}</td>
+                                            <td>${typeof stats2.mean === 'number' ? stats2.mean.toFixed(3) : 'N/A'}</td>
+                                            <td>${typeof stats1.mean === 'number' && typeof stats2.mean === 'number' ? Math.abs(stats1.mean - stats2.mean).toFixed(3) : 'N/A'}</td>
+                                        </tr>
+                                        <tr>
+                                            <td><strong>Median</strong></td>
+                                            <td>${typeof stats1.median === 'number' ? stats1.median.toFixed(3) : 'N/A'}</td>
+                                            <td>${typeof stats2.median === 'number' ? stats2.median.toFixed(3) : 'N/A'}</td>
+                                            <td>${typeof stats1.median === 'number' && typeof stats2.median === 'number' ? Math.abs(stats1.median - stats2.median).toFixed(3) : 'N/A'}</td>
+                                        </tr>
+                                        <tr>
+                                            <td><strong>Std Dev</strong></td>
+                                            <td>${typeof stats1.std === 'number' ? stats1.std.toFixed(3) : 'N/A'}</td>
+                                            <td>${typeof stats2.std === 'number' ? stats2.std.toFixed(3) : 'N/A'}</td>
+                                            <td>${typeof stats1.std === 'number' && typeof stats2.std === 'number' ? Math.abs(stats1.std - stats2.std).toFixed(3) : 'N/A'}</td>
+                                        </tr>
+                                        <tr>
+                                            <td><strong>Min</strong></td>
+                                            <td>${typeof stats1.min === 'number' ? stats1.min.toFixed(3) : 'N/A'}</td>
+                                            <td>${typeof stats2.min === 'number' ? stats2.min.toFixed(3) : 'N/A'}</td>
+                                            <td>${typeof stats1.min === 'number' && typeof stats2.min === 'number' ? Math.abs(stats1.min - stats2.min).toFixed(3) : 'N/A'}</td>
+                                        </tr>
+                                        <tr>
+                                            <td><strong>Max</strong></td>
+                                            <td>${typeof stats1.max === 'number' ? stats1.max.toFixed(3) : 'N/A'}</td>
+                                            <td>${typeof stats2.max === 'number' ? stats2.max.toFixed(3) : 'N/A'}</td>
+                                            <td>${typeof stats1.max === 'number' && typeof stats2.max === 'number' ? Math.abs(stats1.max - stats2.max).toFixed(3) : 'N/A'}</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        `;
+                    } else {
+                        // Basic statistics table for non-numerical columns
+                        return `
+                            <div class="statistic-section">
+                                <h5>Column: ${stat.column} <span class="column-type">(${stats1.data_type || 'Mixed'})</span></h5>
+                                <table class="statistics-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Metric</th>
+                                            <th>${stat.dataset1.name}</th>
+                                            <th>${stat.dataset2.name}</th>
+                                            <th>Difference</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td><strong>Data Type</strong></td>
+                                            <td><code>${stats1.data_type || 'Unknown'}</code></td>
+                                            <td><code>${stats2.data_type || 'Unknown'}</code></td>
+                                            <td>${(stats1.data_type === stats2.data_type) ? '✅ Match' : '❌ Different'}</td>
+                                        </tr>
+                                        <tr>
+                                            <td><strong>Total Count</strong></td>
+                                            <td>${stats1.total_count || 'N/A'}</td>
+                                            <td>${stats2.total_count || 'N/A'}</td>
+                                            <td>${stats1.total_count && stats2.total_count ? Math.abs(stats1.total_count - stats2.total_count) : 'N/A'}</td>
+                                        </tr>
+                                        <tr>
+                                            <td><strong>Unique Values</strong></td>
+                                            <td>${stats1.unique_values || 'N/A'}</td>
+                                            <td>${stats2.unique_values || 'N/A'}</td>
+                                            <td>${stats1.unique_values && stats2.unique_values ? Math.abs(stats1.unique_values - stats2.unique_values) : 'N/A'}</td>
+                                        </tr>
+                                        <tr>
+                                            <td><strong>Null Count</strong></td>
+                                            <td>${stats1.null_count || 'N/A'}</td>
+                                            <td>${stats2.null_count || 'N/A'}</td>
+                                            <td>${stats1.null_count && stats2.null_count ? Math.abs(stats1.null_count - stats2.null_count) : 'N/A'}</td>
+                                        </tr>
+                                        <tr>
+                                            <td><strong>Completeness</strong></td>
+                                            <td>${stats1.total_count && stats1.null_count ? ((stats1.total_count - stats1.null_count) / stats1.total_count * 100).toFixed(1) + '%' : 'N/A'}</td>
+                                            <td>${stats2.total_count && stats2.null_count ? ((stats2.total_count - stats2.null_count) / stats2.total_count * 100).toFixed(1) + '%' : 'N/A'}</td>
+                                            <td>-</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        `;
+                    }
+                }).join('')}
             </div>
         `;
     }
