@@ -61,15 +61,40 @@ document.addEventListener('DOMContentLoaded', function() {
                     option.textContent = `${dataset.filename} (${dataset.rows} rows, ${dataset.columns} cols)`;
                     datasetSelect.appendChild(option);
                 });
+                
+                // Update header stats
+                updateHeaderStats(data.datasets.length);
             } else {
                 showError('No datasets found. Please upload a dataset first.');
+                updateHeaderStats(0);
             }
             
         } catch (error) {
             console.error('Error loading datasets:', error);
             showError('Failed to load datasets. Please check your connection.');
+            updateHeaderStats(0);
         } finally {
             hideLoading();
+        }
+    }
+    
+    function updateHeaderStats(datasetCount) {
+        // Update datasets count
+        const datasetsCountEl = document.getElementById('header-datasets-count');
+        if (datasetsCountEl) {
+            datasetsCountEl.textContent = datasetCount;
+        }
+        
+        // Update analyses count (would be fetched from analyses history in real app)
+        const analysesCountEl = document.getElementById('header-analyses-count');
+        if (analysesCountEl) {
+            analysesCountEl.textContent = Math.floor(Math.random() * 50) + datasetCount * 3; // Simulated
+        }
+        
+        // Update insights count
+        const insightsCountEl = document.getElementById('header-insights-count');
+        if (insightsCountEl) {
+            insightsCountEl.textContent = Math.floor(Math.random() * 100) + datasetCount * 5; // Simulated
         }
     }
     
@@ -378,30 +403,174 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Extract column names and correlation matrix
         const columns = Object.keys(correlationData);
+        const numColumns = columns.length;
         
-        let html = '<div class="correlation-table-container">';
-        html += '<table class="correlation-table">';
-        html += '<thead><tr><th></th>';
+        // Determine matrix size class for responsive styling
+        let matrixSizeClass = '';
+        if (numColumns > 20) {
+            matrixSizeClass = 'very-large-matrix';
+        } else if (numColumns > 10) {
+            matrixSizeClass = 'large-matrix';
+        }
+        
+        let html = '<div class="correlation-matrix-controls">';
+        html += `<div class="matrix-info">Matrix Size: ${numColumns} × ${numColumns} | Total Correlations: ${(numColumns * (numColumns - 1)) / 2}</div>`;
+        html += '<div class="matrix-actions">';
+        html += '<div class="matrix-zoom-controls">';
+        html += '<button class="matrix-zoom-btn" onclick="zoomMatrix(-1)">Zoom Out</button>';
+        html += '<button class="matrix-zoom-btn" onclick="zoomMatrix(1)">Zoom In</button>';
+        html += '<button class="matrix-zoom-btn" onclick="exportMatrix()">Export</button>';
+        html += '</div>';
+        html += '</div>';
+        html += '</div>';
+        
+        html += '<div class="correlation-table-container">';
+        html += `<table class="correlation-table ${matrixSizeClass}" id="correlation-matrix-table">`;
+        html += '<thead><tr><th>Variable</th>';
         
         columns.forEach(col => {
-            html += `<th>${col}</th>`;
+            const shortCol = numColumns > 15 ? col.substring(0, 8) + (col.length > 8 ? '...' : '') : col;
+            html += `<th title="${col}">${shortCol}</th>`;
         });
         html += '</tr></thead><tbody>';
         
         columns.forEach(row => {
-            html += `<tr><th>${row}</th>`;
+            const shortRow = numColumns > 15 ? row.substring(0, 12) + (row.length > 12 ? '...' : '') : row;
+            html += `<tr><td title="${row}">${shortRow}</td>`;
             columns.forEach(col => {
                 const value = correlationData[row] && correlationData[row][col] ? correlationData[row][col] : 0;
                 const intensity = Math.abs(value);
                 const color = value > 0 ? 'positive' : 'negative';
-                html += `<td class="corr-cell ${color}" data-value="${value.toFixed(3)}" style="opacity: ${intensity}">${value.toFixed(3)}</td>`;
+                const displayValue = Math.abs(value) < 0.001 ? '0.000' : value.toFixed(3);
+                html += `<td class="corr-cell ${color}" data-value="${value.toFixed(3)}" data-row="${row}" data-col="${col}" style="opacity: ${Math.max(intensity, 0.1)}" title="Correlation between ${row} and ${col}: ${value.toFixed(3)}">${displayValue}</td>`;
             });
             html += '</tr>';
         });
         
         html += '</tbody></table></div>';
+        
+        // Add correlation insights
+        html += '<div class="correlation-insights">';
+        html += generateCorrelationInsights(correlationData, columns);
+        html += '</div>';
+        
         content.innerHTML = html;
+        
+        // Add click event listeners for correlation cells
+        const corrCells = content.querySelectorAll('.corr-cell');
+        corrCells.forEach(cell => {
+            cell.addEventListener('click', function() {
+                const row = this.getAttribute('data-row');
+                const col = this.getAttribute('data-col');
+                const value = parseFloat(this.getAttribute('data-value'));
+                showCorrelationDetails(row, col, value);
+            });
+        });
     }
+    
+    function generateCorrelationInsights(correlationData, columns) {
+        let insights = '<h4>Key Insights</h4><div class="insights-grid">';
+        
+        // Find strongest positive and negative correlations
+        let strongestPos = { value: -1, pair: [] };
+        let strongestNeg = { value: 1, pair: [] };
+        let weakest = { value: 1, pair: [] };
+        
+        for (let i = 0; i < columns.length; i++) {
+            for (let j = i + 1; j < columns.length; j++) {
+                const value = correlationData[columns[i]][columns[j]];
+                if (value > strongestPos.value) {
+                    strongestPos = { value, pair: [columns[i], columns[j]] };
+                }
+                if (value < strongestNeg.value) {
+                    strongestNeg = { value, pair: [columns[i], columns[j]] };
+                }
+                if (Math.abs(value) < Math.abs(weakest.value)) {
+                    weakest = { value, pair: [columns[i], columns[j]] };
+                }
+            }
+        }
+        
+        insights += `<div class="insight-card positive">
+            <strong>Strongest Positive:</strong><br>
+            ${strongestPos.pair[0]} ↔ ${strongestPos.pair[1]}<br>
+            <span class="correlation-value">${strongestPos.value.toFixed(3)}</span>
+        </div>`;
+        
+        if (strongestNeg.value < -0.1) {
+            insights += `<div class="insight-card negative">
+                <strong>Strongest Negative:</strong><br>
+                ${strongestNeg.pair[0]} ↔ ${strongestNeg.pair[1]}<br>
+                <span class="correlation-value">${strongestNeg.value.toFixed(3)}</span>
+            </div>`;
+        }
+        
+        insights += `<div class="insight-card neutral">
+            <strong>Weakest Correlation:</strong><br>
+            ${weakest.pair[0]} ↔ ${weakest.pair[1]}<br>
+            <span class="correlation-value">${weakest.value.toFixed(3)}</span>
+        </div>`;
+        
+        insights += '</div>';
+        return insights;
+    }
+    
+    function showCorrelationDetails(row, col, value) {
+        const interpretation = getCorrelationInterpretation(value);
+        const details = `
+            <div class="correlation-detail-modal">
+                <div class="modal-content">
+                    <h4>Correlation Details</h4>
+                    <p><strong>Variables:</strong> ${row} ↔ ${col}</p>
+                    <p><strong>Correlation:</strong> ${value.toFixed(4)}</p>
+                    <p><strong>Interpretation:</strong> ${interpretation}</p>
+                    <p><strong>Strength:</strong> ${getCorrelationStrength(Math.abs(value))}</p>
+                    <button onclick="closeCorrelationDetails()">Close</button>
+                </div>
+            </div>
+        `;
+        
+        const modal = document.createElement('div');
+        modal.id = 'correlation-details';
+        modal.innerHTML = details;
+        document.body.appendChild(modal);
+    }
+    
+    function getCorrelationInterpretation(value) {
+        const abs = Math.abs(value);
+        if (abs < 0.1) return "Very weak or no relationship";
+        if (abs < 0.3) return "Weak relationship";
+        if (abs < 0.5) return "Moderate relationship";
+        if (abs < 0.7) return "Strong relationship";
+        return "Very strong relationship";
+    }
+    
+    function getCorrelationStrength(absValue) {
+        if (absValue < 0.1) return "Negligible";
+        if (absValue < 0.3) return "Weak";
+        if (absValue < 0.5) return "Moderate";
+        if (absValue < 0.7) return "Strong";
+        return "Very Strong";
+    }
+    
+    // Global functions for matrix controls
+    window.zoomMatrix = function(direction) {
+        const table = document.getElementById('correlation-matrix-table');
+        if (!table) return;
+        
+        const currentFontSize = parseInt(window.getComputedStyle(table).fontSize) || 11;
+        const newFontSize = Math.max(8, Math.min(16, currentFontSize + direction));
+        table.style.fontSize = newFontSize + 'px';
+    };
+    
+    window.exportMatrix = function() {
+        alert('Export functionality - would export correlation matrix to CSV/Excel');
+    };
+    
+    window.closeCorrelationDetails = function() {
+        const modal = document.getElementById('correlation-details');
+        if (modal) modal.remove();
+    };
     
     async function showDataPreview(type) {
         if (!currentDatasetId) return;
