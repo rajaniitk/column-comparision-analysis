@@ -1,4 +1,4 @@
-document.addEventListener('DOMContentLoaded', function() {
+THIS SHOULD BE A LINTER ERRORdocument.addEventListener('DOMContentLoaded', function() {
     // Global variables
     let selectedDatasets = [];
     let selectedColumns = [];
@@ -340,6 +340,8 @@ document.addEventListener('DOMContentLoaded', function() {
             
             if (data.success) {
                 console.log('Dataset comparison successful, returning data:', data.comparison);
+                console.log('Statistical comparison array in response:', data.comparison.statistical_comparison);
+                console.log('Statistical comparison length:', data.comparison.statistical_comparison ? data.comparison.statistical_comparison.length : 'undefined');
                 return data.comparison;
             } else {
                 console.error('Dataset comparison returned unsuccessful:', data.error);
