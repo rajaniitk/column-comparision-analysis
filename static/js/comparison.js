@@ -363,30 +363,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
-    function generateStatisticalComparison(datasets) {
-        return datasets.map(dataset => ({
-            dataset_name: dataset.name,
-            statistics: {
-                mean_age: (Math.random() * 20 + 30).toFixed(1),
-                median_income: (Math.random() * 50000 + 50000).toFixed(0),
-                std_score: (Math.random() * 2 + 1).toFixed(2),
-                min_value: Math.floor(Math.random() * 100),
-                max_value: Math.floor(Math.random() * 1000 + 500)
-            }
-        }));
-    }
-    
-    function generateQualityComparison(datasets) {
-        return datasets.map(dataset => ({
-            dataset_name: dataset.name,
-            quality_metrics: {
-                completeness: (Math.random() * 20 + 80).toFixed(1),
-                consistency: (Math.random() * 15 + 85).toFixed(1),
-                validity: (Math.random() * 10 + 90).toFixed(1),
-                uniqueness: (Math.random() * 25 + 75).toFixed(1)
-            }
-        }));
-    }
+    // These functions were removed - using real data from backend instead of dummy data
     
     function displayDatasetComparison(comparison) {
         const container = document.getElementById('comparison-results');
@@ -689,65 +666,169 @@ document.addEventListener('DOMContentLoaded', function() {
     function displayColumnComparison(comparison) {
         const container = document.getElementById('comparison-results');
         
+        // Handle different comparison response formats
+        let displayData;
+        
+        if (comparison.comparison_type === 'cross_dataset') {
+            // Cross-dataset comparison format
+            displayData = {
+                column1: {
+                    dataset: comparison.datasets.dataset1,
+                    column: comparison.columns.column1,
+                    stats: comparison.column1_stats
+                },
+                column2: {
+                    dataset: comparison.datasets.dataset2,
+                    column: comparison.columns.column2,
+                    stats: comparison.column2_stats
+                },
+                summary: comparison.comparison_summary,
+                tests: null
+            };
+        } else if (comparison.comparison_type === 'numerical') {
+            // Same-dataset numerical comparison
+            displayData = {
+                column1: {
+                    dataset: 'Current Dataset',
+                    column: comparison.columns[0],
+                    stats: comparison.descriptive_stats[comparison.columns[0]]
+                },
+                column2: {
+                    dataset: 'Current Dataset', 
+                    column: comparison.columns[1],
+                    stats: comparison.descriptive_stats[comparison.columns[1]]
+                },
+                tests: {
+                    correlation: comparison.pearson_correlation?.coefficient?.toFixed(4) || 'N/A',
+                    t_test_p_value: comparison.difference_test?.p_value?.toFixed(4) || 'N/A',
+                    ks_test_p_value: comparison.distribution_test?.p_value?.toFixed(4) || 'N/A'
+                }
+            };
+        } else if (comparison.comparison_type === 'categorical') {
+            // Same-dataset categorical comparison
+            displayData = {
+                column1: {
+                    dataset: 'Current Dataset',
+                    column: comparison.columns[0],
+                    stats: {
+                        count: comparison.sample_size,
+                        unique_values: comparison.unique_values[comparison.columns[0]]
+                    }
+                },
+                column2: {
+                    dataset: 'Current Dataset',
+                    column: comparison.columns[1], 
+                    stats: {
+                        count: comparison.sample_size,
+                        unique_values: comparison.unique_values[comparison.columns[1]]
+                    }
+                },
+                tests: {
+                    chi_square: comparison.chi_square_test?.chi2_statistic?.toFixed(4) || 'N/A',
+                    p_value: comparison.chi_square_test?.p_value?.toFixed(4) || 'N/A',
+                    cramers_v: comparison.effect_size?.cramers_v?.toFixed(4) || 'N/A'
+                }
+            };
+        } else {
+            // Fallback or error case
+            displayData = comparison;
+        }
+        
         // Safely handle undefined comparison data
-        if (!comparison || !comparison.column1 || !comparison.column2) {
+        if (!displayData || !displayData.column1 || !displayData.column2) {
             container.innerHTML = `
                 <div class="column-comparison-results error">
                     <h3>Column Comparison Error</h3>
                     <p>Unable to display comparison results. Please ensure both columns are properly selected and contain valid data.</p>
+                    <p>Error details: ${comparison.error || 'Unknown error occurred'}</p>
                 </div>
             `;
+            container.style.display = 'block';
             return;
         }
         
         const html = `
             <div class="column-comparison-results">
                 <h3>Column Comparison Results</h3>
-                <p>Comparing ${comparison.column1.column || 'Unknown'} vs ${comparison.column2.column || 'Unknown'}</p>
+                <p>Comparing <strong>${displayData.column1.column}</strong> vs <strong>${displayData.column2.column}</strong></p>
                 
                 <div class="column-stats-grid">
                     <div class="column-stats-card">
-                        <h4>${comparison.column1.dataset || 'Unknown Dataset'} - ${comparison.column1.column || 'Unknown Column'}</h4>
+                        <h4>${displayData.column1.dataset} - ${displayData.column1.column}</h4>
                         <div class="stats-list">
-                            ${comparison.column1.stats ? Object.entries(comparison.column1.stats).map(([stat, value]) => `
+                            ${displayData.column1.stats ? Object.entries(displayData.column1.stats).map(([stat, value]) => `
                                 <div class="stat-row">
-                                    <span class="stat-name">${stat.toUpperCase()}:</span>
-                                    <span class="stat-value">${value !== null && value !== undefined ? value : 'N/A'}</span>
+                                    <span class="stat-name">${stat.replace('_', ' ').toUpperCase()}:</span>
+                                    <span class="stat-value">${
+                                        typeof value === 'number' ? value.toFixed(3) : 
+                                        (value !== null && value !== undefined ? value : 'N/A')
+                                    }</span>
                                 </div>
                             `).join('') : '<p>No statistics available</p>'}
                         </div>
                     </div>
                     
                     <div class="column-stats-card">
-                        <h4>${comparison.column2.dataset || 'Unknown Dataset'} - ${comparison.column2.column || 'Unknown Column'}</h4>
+                        <h4>${displayData.column2.dataset} - ${displayData.column2.column}</h4>
                         <div class="stats-list">
-                            ${comparison.column2.stats ? Object.entries(comparison.column2.stats).map(([stat, value]) => `
+                            ${displayData.column2.stats ? Object.entries(displayData.column2.stats).map(([stat, value]) => `
                                 <div class="stat-row">
-                                    <span class="stat-name">${stat.toUpperCase()}:</span>
-                                    <span class="stat-value">${value !== null && value !== undefined ? value : 'N/A'}</span>
+                                    <span class="stat-name">${stat.replace('_', ' ').toUpperCase()}:</span>
+                                    <span class="stat-value">${
+                                        typeof value === 'number' ? value.toFixed(3) : 
+                                        (value !== null && value !== undefined ? value : 'N/A')
+                                    }</span>
                                 </div>
                             `).join('') : '<p>No statistics available</p>'}
                         </div>
                     </div>
                 </div>
                 
-                <div class="statistical-tests">
-                    <h4>Statistical Tests</h4>
-                    <div class="test-results">
-                        <div class="test-result">
-                            <span class="test-name">Correlation:</span>
-                            <span class="test-value">${comparison.tests && comparison.tests.correlation !== undefined ? comparison.tests.correlation : 'N/A'}</span>
+                ${displayData.summary ? `
+                    <div class="comparison-summary-section">
+                        <h4>Comparison Summary</h4>
+                        <div class="summary-stats">
+                            <div class="summary-item">
+                                <span class="summary-label">Data Types Match:</span>
+                                <span class="summary-value ${displayData.summary.data_type_match ? 'positive' : 'negative'}">
+                                    ${displayData.summary.data_type_match ? 'Yes' : 'No'}
+                                </span>
+                            </div>
+                            <div class="summary-item">
+                                <span class="summary-label">Size Difference:</span>
+                                <span class="summary-value">${displayData.summary.size_difference || 0} rows</span>
+                            </div>
+                            ${displayData.summary.mean_difference ? `
+                                <div class="summary-item">
+                                    <span class="summary-label">Mean Difference:</span>
+                                    <span class="summary-value">${displayData.summary.mean_difference.toFixed(3)}</span>
+                                </div>
+                            ` : ''}
                         </div>
-                        <div class="test-result">
-                            <span class="test-name">T-test p-value:</span>
-                            <span class="test-value">${comparison.tests && comparison.tests.t_test_p_value !== undefined ? comparison.tests.t_test_p_value : 'N/A'}</span>
-                        </div>
-                        <div class="test-result">
-                            <span class="test-name">Kolmogorov-Smirnov p-value:</span>
-                            <span class="test-value">${comparison.tests && comparison.tests.ks_test_p_value !== undefined ? comparison.tests.ks_test_p_value : 'N/A'}</span>
+                        ${displayData.summary.notes && displayData.summary.notes.length > 0 ? `
+                            <div class="summary-notes">
+                                <h5>Notes:</h5>
+                                <ul>
+                                    ${displayData.summary.notes.map(note => `<li>${note}</li>`).join('')}
+                                </ul>
+                            </div>
+                        ` : ''}
+                    </div>
+                ` : ''}
+                
+                ${displayData.tests ? `
+                    <div class="statistical-tests">
+                        <h4>Statistical Tests</h4>
+                        <div class="test-results">
+                            ${Object.entries(displayData.tests).map(([testName, value]) => `
+                                <div class="test-result">
+                                    <span class="test-name">${testName.replace('_', ' ').toUpperCase()}:</span>
+                                    <span class="test-value">${value}</span>
+                                </div>
+                            `).join('')}
                         </div>
                     </div>
-                </div>
+                ` : ''}
             </div>
         `;
         
