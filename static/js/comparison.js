@@ -1127,6 +1127,8 @@ document.addEventListener('DOMContentLoaded', function() {
         allTabs.forEach(tab => {
             tab.classList.remove('active');
             tab.style.display = 'none';
+            tab.style.visibility = 'hidden';
+            tab.style.opacity = '0';
         });
         
         // Remove active from all buttons
@@ -1140,7 +1142,24 @@ document.addEventListener('DOMContentLoaded', function() {
         if (selectedTab) {
             selectedTab.classList.add('active');
             selectedTab.style.display = 'block';
+            selectedTab.style.visibility = 'visible';
+            selectedTab.style.opacity = '1';
+            
+            // Force with setAttribute as backup
+            selectedTab.setAttribute('style', 'display: block !important; visibility: visible !important; opacity: 1 !important;');
+            
+            // Double-check the changes were applied
+            console.log('After setting active - classList:', selectedTab.classList.toString());
+            console.log('After setting active - style.display:', selectedTab.style.display);
+            console.log('After setting active - computed display:', window.getComputedStyle(selectedTab).display);
             console.log('Tab should now be visible:', tabName);
+            
+            // Also activate the corresponding button
+            const correspondingButton = document.querySelector(`[data-tab="${tabName}"]`);
+            if (correspondingButton) {
+                correspondingButton.classList.add('active');
+                console.log('Button activated for tab:', tabName);
+            }
         } else {
             console.error('Could not find tab with ID:', tabName);
         }
