@@ -73,8 +73,8 @@ document.addEventListener('DOMContentLoaded', function() {
     
     async function loadDatasets() {
         try {
-            // Fetch real datasets from the API
-            const response = await fetch('/api/data/datasets');
+            // Fetch datasets from the comparison API endpoint
+            const response = await fetch('/api/comparison/datasets');
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
@@ -82,9 +82,18 @@ document.addEventListener('DOMContentLoaded', function() {
             const data = await response.json();
             
             if (data.success && data.datasets) {
-                // Transform datasets to include column names
+                // Transform datasets to include column names if not already present
                 const datasetsWithColumns = await Promise.all(data.datasets.map(async (dataset) => {
                     try {
+                        // Use column_names directly if available, otherwise try to fetch
+                        if (dataset.column_names && Array.isArray(dataset.column_names)) {
+                            return {
+                                ...dataset,
+                                columns_list: dataset.column_names
+                            };
+                        }
+                        
+                        // Try alternative API endpoint for columns
                         const colResponse = await fetch(`/api/data/columns/${dataset.id}`);
                         if (colResponse.ok) {
                             const colData = await colResponse.json();
@@ -95,6 +104,8 @@ document.addEventListener('DOMContentLoaded', function() {
                                 };
                             }
                         }
+                        
+                        // Fallback to existing column_names or empty array
                         return {
                             ...dataset,
                             columns_list: dataset.column_names || []
@@ -111,7 +122,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 storeDatasets(datasetsWithColumns);
                 populateDatasetSelectors(datasetsWithColumns);
             } else {
-                console.log('No datasets available');
+                console.log('No datasets available or API returned error:', data.error);
+                // Show fallback message
+                showError('No datasets available. Please upload some data first.');
                 storeDatasets([]);
                 populateDatasetSelectors([]);
             }
@@ -119,6 +132,24 @@ document.addEventListener('DOMContentLoaded', function() {
         } catch (error) {
             console.error('Error loading datasets:', error);
             showError('Failed to load datasets: ' + error.message);
+            // Try to load from alternative endpoint as fallback
+            try {
+                const fallbackResponse = await fetch('/api/data/datasets');
+                if (fallbackResponse.ok) {
+                    const fallbackData = await fallbackResponse.json();
+                    if (fallbackData.success && fallbackData.datasets) {
+                        storeDatasets(fallbackData.datasets);
+                        populateDatasetSelectors(fallbackData.datasets);
+                        return;
+                    }
+                }
+            } catch (fallbackError) {
+                console.error('Fallback dataset loading also failed:', fallbackError);
+            }
+            
+            // Final fallback - empty state
+            storeDatasets([]);
+            populateDatasetSelectors([]);
         }
     }
     
@@ -158,34 +189,65 @@ document.addEventListener('DOMContentLoaded', function() {
         const column1Select = document.getElementById('column1-select');
         const column2Select = document.getElementById('column2-select');
         
+        // Clear existing options
         if (column1Select) column1Select.innerHTML = '<option value="">Choose first column...</option>';
         if (column2Select) column2Select.innerHTML = '<option value="">Choose second column...</option>';
         
         if (selectedDatasetId) {
-            // Fetch columns for the selected dataset
-            fetch(`/api/data/columns/${selectedDatasetId}`)
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success && data.columns) {
-                        data.columns.forEach(column => {
-                            if (column1Select) {
-                                const option1 = document.createElement('option');
-                                option1.value = column.name;
-                                option1.textContent = column.name;
-                                column1Select.appendChild(option1);
-                            }
-                            if (column2Select) {
-                                const option2 = document.createElement('option');
-                                option2.value = column.name;
-                                option2.textContent = column.name;
-                                column2Select.appendChild(option2);
-                            }
-                        });
+            // First try to get columns from stored datasets
+            const datasets = getStoredDatasets();
+            const selectedDataset = datasets.find(d => d.id.toString() === selectedDatasetId);
+            
+            if (selectedDataset && selectedDataset.columns_list && selectedDataset.columns_list.length > 0) {
+                // Use stored column data
+                selectedDataset.columns_list.forEach(columnName => {
+                    if (column1Select) {
+                        const option1 = document.createElement('option');
+                        option1.value = columnName;
+                        option1.textContent = columnName;
+                        column1Select.appendChild(option1);
                     }
-                })
-                .catch(error => {
-                    console.error('Error loading columns:', error);
+                    if (column2Select) {
+                        const option2 = document.createElement('option');
+                        option2.value = columnName;
+                        option2.textContent = columnName;
+                        column2Select.appendChild(option2);
+                    }
                 });
+            } else {
+                // Fetch columns from API as fallback
+                fetch(`/api/data/columns/${selectedDatasetId}`)
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error(`HTTP error! status: ${response.status}`);
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        if (data.success && data.columns) {
+                            data.columns.forEach(column => {
+                                if (column1Select) {
+                                    const option1 = document.createElement('option');
+                                    option1.value = column.name;
+                                    option1.textContent = `${column.name} (${column.type})`;
+                                    column1Select.appendChild(option1);
+                                }
+                                if (column2Select) {
+                                    const option2 = document.createElement('option');
+                                    option2.value = column.name;
+                                    option2.textContent = `${column.name} (${column.type})`;
+                                    column2Select.appendChild(option2);
+                                }
+                            });
+                        } else {
+                            showError('Failed to load columns: ' + (data.error || 'Unknown error'));
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error loading columns:', error);
+                        showError('Failed to load columns: ' + error.message);
+                    });
+            }
         }
     }
     
@@ -336,23 +398,23 @@ document.addEventListener('DOMContentLoaded', function() {
             </div>
             
             <div class="comparison-tabs">
-                <button class="comparison-tab active" data-tab="overview">Overview</button>
-                <button class="comparison-tab" data-tab="schema">Schema</button>
-                <button class="comparison-tab" data-tab="statistics">Statistics</button>
-                <button class="comparison-tab" data-tab="quality">Quality</button>
+                <button class="comp-tab-button active" data-tab="overview">Overview</button>
+                <button class="comp-tab-button" data-tab="schema">Schema</button>
+                <button class="comp-tab-button" data-tab="statistics">Statistics</button>
+                <button class="comp-tab-button" data-tab="quality">Quality</button>
             </div>
             
             <div class="tab-content">
-                <div id="overview" class="tab-pane active">
+                <div id="overview" class="comp-tab-content active">
                     ${generateOverviewHTML(comparison.overview)}
                 </div>
-                <div id="schema" class="tab-pane">
+                <div id="schema" class="comp-tab-content">
                     ${generateSchemaHTML(comparison.schema_comparison)}
                 </div>
-                <div id="statistics" class="tab-pane">
+                <div id="statistics" class="comp-tab-content">
                     ${generateStatisticsHTML(comparison.statistical_comparison)}
                 </div>
-                <div id="quality" class="tab-pane">
+                <div id="quality" class="comp-tab-content">
                     ${generateQualityHTML(comparison.quality_comparison)}
                 </div>
             </div>
@@ -362,7 +424,7 @@ document.addEventListener('DOMContentLoaded', function() {
         container.style.display = 'block';
         
         // Reattach tab event listeners
-        const tabButtons = container.querySelectorAll('.comparison-tab');
+        const tabButtons = container.querySelectorAll('.comp-tab-button');
         tabButtons.forEach(button => {
             button.addEventListener('click', (e) => {
                 switchTab(e.target.getAttribute('data-tab'));
@@ -451,32 +513,59 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function generateStatisticsHTML(statistics) {
+        if (!statistics || statistics.length === 0) {
+            return '<p>No statistical comparison data available. Try selecting datasets with common numerical columns.</p>';
+        }
+        
         return `
             <div class="statistics-comparison">
-                <table class="statistics-table">
-                    <thead>
-                        <tr>
-                            <th>Dataset</th>
-                            <th>Mean Age</th>
-                            <th>Median Income</th>
-                            <th>Std Score</th>
-                            <th>Min Value</th>
-                            <th>Max Value</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${statistics.map(stat => `
-                            <tr>
-                                <td><strong>${stat.dataset_name}</strong></td>
-                                <td>${stat.statistics.mean_age}</td>
-                                <td>$${Number(stat.statistics.median_income).toLocaleString()}</td>
-                                <td>${stat.statistics.std_score}</td>
-                                <td>${stat.statistics.min_value}</td>
-                                <td>${stat.statistics.max_value}</td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
+                ${statistics.map(stat => `
+                    <div class="statistic-section">
+                        <h5>Column: ${stat.column}</h5>
+                        <table class="statistics-table">
+                            <thead>
+                                <tr>
+                                    <th>Metric</th>
+                                    <th>${stat.dataset1.name}</th>
+                                    <th>${stat.dataset2.name}</th>
+                                    <th>Difference</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><strong>Mean</strong></td>
+                                    <td>${stat.dataset1.statistics.mean.toFixed(3)}</td>
+                                    <td>${stat.dataset2.statistics.mean.toFixed(3)}</td>
+                                    <td>${Math.abs(stat.dataset1.statistics.mean - stat.dataset2.statistics.mean).toFixed(3)}</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Median</strong></td>
+                                    <td>${stat.dataset1.statistics.median.toFixed(3)}</td>
+                                    <td>${stat.dataset2.statistics.median.toFixed(3)}</td>
+                                    <td>${Math.abs(stat.dataset1.statistics.median - stat.dataset2.statistics.median).toFixed(3)}</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Std Dev</strong></td>
+                                    <td>${stat.dataset1.statistics.std.toFixed(3)}</td>
+                                    <td>${stat.dataset2.statistics.std.toFixed(3)}</td>
+                                    <td>${Math.abs(stat.dataset1.statistics.std - stat.dataset2.statistics.std).toFixed(3)}</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Min</strong></td>
+                                    <td>${stat.dataset1.statistics.min.toFixed(3)}</td>
+                                    <td>${stat.dataset2.statistics.min.toFixed(3)}</td>
+                                    <td>${Math.abs(stat.dataset1.statistics.min - stat.dataset2.statistics.min).toFixed(3)}</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Max</strong></td>
+                                    <td>${stat.dataset1.statistics.max.toFixed(3)}</td>
+                                    <td>${stat.dataset2.statistics.max.toFixed(3)}</td>
+                                    <td>${Math.abs(stat.dataset1.statistics.max - stat.dataset2.statistics.max).toFixed(3)}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                `).join('')}
             </div>
         `;
     }
@@ -667,16 +756,31 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function switchTab(tabName) {
-        // Remove active class from all tabs and panes
-        document.querySelectorAll('.comparison-tab').forEach(tab => tab.classList.remove('active'));
-        document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.remove('active'));
+        // Handle both comparison tabs and detailed comparison tabs
+        const allTabs = document.querySelectorAll('.comp-tab-content, .tab-pane');
+        const allButtons = document.querySelectorAll('.comp-tab-button, .comparison-tab');
         
-        // Add active class to selected tab and pane
-        const activeTab = document.querySelector(`[data-tab="${tabName}"]`);
-        const activePane = document.getElementById(tabName);
+        // Hide all tabs
+        allTabs.forEach(tab => {
+            tab.classList.remove('active');
+            tab.style.display = 'none';
+        });
         
-        if (activeTab) activeTab.classList.add('active');
-        if (activePane) activePane.classList.add('active');
+        // Remove active from all buttons
+        allButtons.forEach(button => button.classList.remove('active'));
+        
+        // Show selected tab
+        const selectedTab = document.getElementById(tabName);
+        if (selectedTab) {
+            selectedTab.classList.add('active');
+            selectedTab.style.display = 'block';
+        }
+        
+        // Activate corresponding button
+        const activeButton = document.querySelector(`[data-tab="${tabName}"]`);
+        if (activeButton) {
+            activeButton.classList.add('active');
+        }
     }
     
     function exportComparison() {
@@ -712,11 +816,51 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function showError(message) {
-        alert(message); // In a real app, use a proper notification system
+        // Remove existing messages
+        const existingMessages = document.querySelectorAll('.error-message, .success-message');
+        existingMessages.forEach(msg => msg.remove());
+        
+        // Create error message
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'error-message';
+        errorDiv.textContent = message;
+        
+        // Insert at the top of the comparison container
+        const container = document.querySelector('.comparison-container');
+        if (container) {
+            container.insertBefore(errorDiv, container.firstChild);
+        }
+        
+        // Auto-remove after 5 seconds
+        setTimeout(() => {
+            if (errorDiv.parentNode) {
+                errorDiv.remove();
+            }
+        }, 5000);
     }
     
     function showSuccess(message) {
-        alert(message); // In a real app, use a proper notification system
+        // Remove existing messages
+        const existingMessages = document.querySelectorAll('.error-message, .success-message');
+        existingMessages.forEach(msg => msg.remove());
+        
+        // Create success message
+        const successDiv = document.createElement('div');
+        successDiv.className = 'success-message';
+        successDiv.textContent = message;
+        
+        // Insert at the top of the comparison container
+        const container = document.querySelector('.comparison-container');
+        if (container) {
+            container.insertBefore(successDiv, container.firstChild);
+        }
+        
+        // Auto-remove after 3 seconds
+        setTimeout(() => {
+            if (successDiv.parentNode) {
+                successDiv.remove();
+            }
+        }, 3000);
     }
     
     function updateSegmentOptions() {
@@ -724,34 +868,57 @@ document.addEventListener('DOMContentLoaded', function() {
         const segmentColumn = document.getElementById('segment-column');
         const targetColumn = document.getElementById('target-column');
         
+        // Clear existing options
         if (segmentColumn) segmentColumn.innerHTML = '<option value="">Choose segmentation column...</option>';
         if (targetColumn) targetColumn.innerHTML = '<option value="">Choose target column...</option>';
         
         if (selectedDatasetId) {
-            // Fetch columns for the selected dataset
-            fetch(`/api/data/columns/${selectedDatasetId}`)
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success && data.columns) {
-                        data.columns.forEach(column => {
-                            if (segmentColumn) {
-                                const option1 = document.createElement('option');
-                                option1.value = column.name;
-                                option1.textContent = column.name;
-                                segmentColumn.appendChild(option1);
-                            }
-                            if (targetColumn) {
-                                const option2 = document.createElement('option');
-                                option2.value = column.name;
-                                option2.textContent = column.name;
-                                targetColumn.appendChild(option2);
-                            }
-                        });
+            // First try to get columns from stored datasets
+            const datasets = getStoredDatasets();
+            const selectedDataset = datasets.find(d => d.id.toString() === selectedDatasetId);
+            
+            if (selectedDataset && selectedDataset.columns_list && selectedDataset.columns_list.length > 0) {
+                // Use stored column data
+                selectedDataset.columns_list.forEach(columnName => {
+                    if (segmentColumn) {
+                        const option1 = document.createElement('option');
+                        option1.value = columnName;
+                        option1.textContent = columnName;
+                        segmentColumn.appendChild(option1);
                     }
-                })
-                .catch(error => {
-                    console.error('Error loading columns for segments:', error);
+                    if (targetColumn) {
+                        const option2 = document.createElement('option');
+                        option2.value = columnName;
+                        option2.textContent = columnName;
+                        targetColumn.appendChild(option2);
+                    }
                 });
+            } else {
+                // Fetch columns from API as fallback
+                fetch(`/api/data/columns/${selectedDatasetId}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success && data.columns) {
+                            data.columns.forEach(column => {
+                                if (segmentColumn) {
+                                    const option1 = document.createElement('option');
+                                    option1.value = column.name;
+                                    option1.textContent = `${column.name} (${column.type})`;
+                                    segmentColumn.appendChild(option1);
+                                }
+                                if (targetColumn) {
+                                    const option2 = document.createElement('option');
+                                    option2.value = column.name;
+                                    option2.textContent = `${column.name} (${column.type})`;
+                                    targetColumn.appendChild(option2);
+                                }
+                            });
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error loading columns for segments:', error);
+                    });
+            }
         }
     }
     

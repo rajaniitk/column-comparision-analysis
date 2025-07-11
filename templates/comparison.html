@@ -121,8 +121,9 @@
         <div class="detailed-comparison">
             <div class="comparison-tabs">
                 <button class="comp-tab-button active" data-tab="overview">Overview</button>
+                <button class="comp-tab-button" data-tab="schema">Schema</button>
                 <button class="comp-tab-button" data-tab="statistics">Statistics</button>
-                <button class="comp-tab-button" data-tab="distributions">Distributions</button>
+                <button class="comp-tab-button" data-tab="quality">Quality</button>
                 <button class="comp-tab-button" data-tab="tests">Statistical Tests</button>
                 <button class="comp-tab-button" data-tab="visualizations">Visualizations</button>
             </div>
@@ -135,11 +136,27 @@
                 </div>
             </div>
 
+            <!-- Schema Tab -->
+            <div id="schema" class="comp-tab-content">
+                <h4>Schema Comparison</h4>
+                <div id="schema-content">
+                    <!-- Schema comparison will be populated here -->
+                </div>
+            </div>
+
             <!-- Statistics Tab -->
             <div id="statistics" class="comp-tab-content">
                 <h4>Descriptive Statistics</h4>
                 <div id="statistics-content">
                     <!-- Statistics comparison will be populated here -->
+                </div>
+            </div>
+
+            <!-- Quality Tab -->
+            <div id="quality" class="comp-tab-content">
+                <h4>Data Quality Comparison</h4>
+                <div id="quality-content">
+                    <!-- Quality comparison will be populated here -->
                 </div>
             </div>
 
