@@ -238,10 +238,13 @@ def compare_datasets():
                                     }
                                 })
                                 current_app.logger.info(f"Generated separate numerical comparison: {col1} vs {col2}")
+                                current_app.logger.info(f"Statistical comparison array length after generation: {len(comparison_result['statistical_comparison'])}")
                         except Exception as e:
                             current_app.logger.error(f"Could not generate separate numerical statistics: {str(e)}")
                     
-                    # Fallback to basic column type comparison for common columns
+                    current_app.logger.info(f"About to check fallbacks. Current statistical_comparison length: {len(comparison_result['statistical_comparison'])}")
+                    
+                    # Fallback to basic column type comparison for common columns  
                     if len(comparison_result['statistical_comparison']) == 0 and common_columns:
                         for col in common_columns[:5]:  # Show first 5 common columns regardless of type
                             try:
@@ -306,7 +309,10 @@ def compare_datasets():
                             current_app.logger.error(f"Could not generate overview statistics: {str(e)}")
                         
             except Exception as e:
-                logging.warning(f"Could not perform detailed schema comparison: {str(e)}")
+                current_app.logger.error(f"Could not perform detailed schema comparison: {str(e)}")
+                current_app.logger.error(f"Exception details: {type(e).__name__}: {str(e)}")
+        
+        current_app.logger.info(f"Before quality comparison. Statistical comparison length: {len(comparison_result['statistical_comparison'])}")
         
         # Generate quality comparison
         for dataset in datasets:
@@ -349,10 +355,30 @@ def compare_datasets():
                     }
                 })
         
-        return jsonify({
-            'success': True,
-            'comparison': comparison_result
-        })
+        current_app.logger.info(f"Final result before return. Statistical comparison length: {len(comparison_result['statistical_comparison'])}")
+        current_app.logger.info(f"Statistical comparison content: {comparison_result['statistical_comparison']}")
+        
+        try:
+            response_data = {
+                'success': True,
+                'comparison': comparison_result
+            }
+            current_app.logger.info(f"About to return JSON response")
+            return jsonify(response_data)
+        except Exception as json_error:
+            current_app.logger.error(f"JSON serialization error: {str(json_error)}")
+            current_app.logger.error(f"JSON error type: {type(json_error).__name__}")
+            # Try to return a simpler response
+            return jsonify({
+                'success': True,
+                'comparison': {
+                    'overview': comparison_result.get('overview', {}),
+                    'schema_comparison': comparison_result.get('schema_comparison', {}),
+                    'statistical_comparison': [],  # Empty for now due to serialization error
+                    'quality_comparison': comparison_result.get('quality_comparison', [])
+                },
+                'error': f"JSON serialization issue: {str(json_error)}"
+            })
         
     except Exception as e:
         current_app.logger.error(f"Dataset comparison error: {str(e)}")
