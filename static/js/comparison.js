@@ -527,7 +527,18 @@ document.addEventListener('DOMContentLoaded', function() {
     
     function generateStatisticsHTML(statistics) {
         if (!statistics || statistics.length === 0) {
-            return '<p>No statistical comparison data available. This might happen if the datasets have no common columns or if the columns contain mostly non-numerical data.</p>';
+            return `
+                <div class="no-stats-message">
+                    <h4>No Statistical Comparison Available</h4>
+                    <p>This can happen when:</p>
+                    <ul>
+                        <li>Datasets have no columns in common</li>
+                        <li>Datasets contain only categorical/text data</li>
+                        <li>There was an error loading the dataset files</li>
+                    </ul>
+                    <p>Try checking the Overview, Schema, and Quality tabs for other comparison insights.</p>
+                </div>
+            `;
         }
         
         return `
@@ -541,9 +552,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     
                     if (isNumerical) {
                         // Numerical statistics table
-                        return `
-                            <div class="statistic-section">
-                                <h5>Column: ${stat.column} <span class="column-type">(Numerical)</span></h5>
+                                        return `
+                    <div class="statistic-section">
+                        <h5>Column: ${stat.column} <span class="column-type">(${stat.comparison_type === 'different_columns' ? 'Cross-Dataset Numerical' : 'Numerical'})</span></h5>
                                 <table class="statistics-table">
                                     <thead>
                                         <tr>
@@ -596,9 +607,13 @@ document.addEventListener('DOMContentLoaded', function() {
                         `;
                     } else {
                         // Basic statistics table for non-numerical columns
+                        const sectionType = stat.comparison_type === 'overview' ? 'Dataset Overview' : 
+                                          stat.comparison_type === 'basic_comparison' ? 'Basic Comparison' : 
+                                          (stats1.data_type || 'Mixed');
+                        
                         return `
                             <div class="statistic-section">
-                                <h5>Column: ${stat.column} <span class="column-type">(${stats1.data_type || 'Mixed'})</span></h5>
+                                <h5>Column: ${stat.column} <span class="column-type">(${sectionType})</span></h5>
                                 <table class="statistics-table">
                                     <thead>
                                         <tr>
@@ -609,36 +624,69 @@ document.addEventListener('DOMContentLoaded', function() {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        <tr>
-                                            <td><strong>Data Type</strong></td>
-                                            <td><code>${stats1.data_type || 'Unknown'}</code></td>
-                                            <td><code>${stats2.data_type || 'Unknown'}</code></td>
-                                            <td>${(stats1.data_type === stats2.data_type) ? '✅ Match' : '❌ Different'}</td>
-                                        </tr>
-                                        <tr>
-                                            <td><strong>Total Count</strong></td>
-                                            <td>${stats1.total_count || 'N/A'}</td>
-                                            <td>${stats2.total_count || 'N/A'}</td>
-                                            <td>${stats1.total_count && stats2.total_count ? Math.abs(stats1.total_count - stats2.total_count) : 'N/A'}</td>
-                                        </tr>
-                                        <tr>
-                                            <td><strong>Unique Values</strong></td>
-                                            <td>${stats1.unique_values || 'N/A'}</td>
-                                            <td>${stats2.unique_values || 'N/A'}</td>
-                                            <td>${stats1.unique_values && stats2.unique_values ? Math.abs(stats1.unique_values - stats2.unique_values) : 'N/A'}</td>
-                                        </tr>
-                                        <tr>
-                                            <td><strong>Null Count</strong></td>
-                                            <td>${stats1.null_count || 'N/A'}</td>
-                                            <td>${stats2.null_count || 'N/A'}</td>
-                                            <td>${stats1.null_count && stats2.null_count ? Math.abs(stats1.null_count - stats2.null_count) : 'N/A'}</td>
-                                        </tr>
-                                        <tr>
-                                            <td><strong>Completeness</strong></td>
-                                            <td>${stats1.total_count && stats1.null_count ? ((stats1.total_count - stats1.null_count) / stats1.total_count * 100).toFixed(1) + '%' : 'N/A'}</td>
-                                            <td>${stats2.total_count && stats2.null_count ? ((stats2.total_count - stats2.null_count) / stats2.total_count * 100).toFixed(1) + '%' : 'N/A'}</td>
-                                            <td>-</td>
-                                        </tr>
+                                        ${stat.comparison_type === 'overview' ? `
+                                            <tr>
+                                                <td><strong>Total Columns</strong></td>
+                                                <td>${stats1.total_columns || 'N/A'}</td>
+                                                <td>${stats2.total_columns || 'N/A'}</td>
+                                                <td>${stats1.total_columns && stats2.total_columns ? Math.abs(stats1.total_columns - stats2.total_columns) : 'N/A'}</td>
+                                            </tr>
+                                            <tr>
+                                                <td><strong>Numerical Columns</strong></td>
+                                                <td>${stats1.numerical_columns || 'N/A'}</td>
+                                                <td>${stats2.numerical_columns || 'N/A'}</td>
+                                                <td>${stats1.numerical_columns && stats2.numerical_columns ? Math.abs(stats1.numerical_columns - stats2.numerical_columns) : 'N/A'}</td>
+                                            </tr>
+                                            <tr>
+                                                <td><strong>Categorical Columns</strong></td>
+                                                <td>${stats1.categorical_columns || 'N/A'}</td>
+                                                <td>${stats2.categorical_columns || 'N/A'}</td>
+                                                <td>${stats1.categorical_columns && stats2.categorical_columns ? Math.abs(stats1.categorical_columns - stats2.categorical_columns) : 'N/A'}</td>
+                                            </tr>
+                                            <tr>
+                                                <td><strong>Total Rows</strong></td>
+                                                <td>${stats1.total_rows || 'N/A'}</td>
+                                                <td>${stats2.total_rows || 'N/A'}</td>
+                                                <td>${stats1.total_rows && stats2.total_rows ? Math.abs(stats1.total_rows - stats2.total_rows) : 'N/A'}</td>
+                                            </tr>
+                                            <tr>
+                                                <td><strong>Memory Usage</strong></td>
+                                                <td>${stats1.memory_usage || 'N/A'}</td>
+                                                <td>${stats2.memory_usage || 'N/A'}</td>
+                                                <td>-</td>
+                                            </tr>
+                                        ` : `
+                                            <tr>
+                                                <td><strong>Data Type</strong></td>
+                                                <td><code>${stats1.data_type || 'Unknown'}</code></td>
+                                                <td><code>${stats2.data_type || 'Unknown'}</code></td>
+                                                <td>${(stats1.data_type === stats2.data_type) ? '✅ Match' : '❌ Different'}</td>
+                                            </tr>
+                                            <tr>
+                                                <td><strong>Total Count</strong></td>
+                                                <td>${stats1.total_count || 'N/A'}</td>
+                                                <td>${stats2.total_count || 'N/A'}</td>
+                                                <td>${stats1.total_count && stats2.total_count ? Math.abs(stats1.total_count - stats2.total_count) : 'N/A'}</td>
+                                            </tr>
+                                            <tr>
+                                                <td><strong>Unique Values</strong></td>
+                                                <td>${stats1.unique_values || 'N/A'}</td>
+                                                <td>${stats2.unique_values || 'N/A'}</td>
+                                                <td>${stats1.unique_values && stats2.unique_values ? Math.abs(stats1.unique_values - stats2.unique_values) : 'N/A'}</td>
+                                            </tr>
+                                            <tr>
+                                                <td><strong>Null Count</strong></td>
+                                                <td>${stats1.null_count || 'N/A'}</td>
+                                                <td>${stats2.null_count || 'N/A'}</td>
+                                                <td>${stats1.null_count && stats2.null_count ? Math.abs(stats1.null_count - stats2.null_count) : 'N/A'}</td>
+                                            </tr>
+                                            <tr>
+                                                <td><strong>Completeness</strong></td>
+                                                <td>${stats1.total_count && stats1.null_count ? ((stats1.total_count - stats1.null_count) / stats1.total_count * 100).toFixed(1) + '%' : 'N/A'}</td>
+                                                <td>${stats2.total_count && stats2.null_count ? ((stats2.total_count - stats2.null_count) / stats2.total_count * 100).toFixed(1) + '%' : 'N/A'}</td>
+                                                <td>-</td>
+                                            </tr>
+                                        `}
                                     </tbody>
                                 </table>
                             </div>

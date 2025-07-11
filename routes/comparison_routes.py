@@ -140,6 +140,16 @@ def compare_datasets():
                                  if pd.api.types.is_numeric_dtype(df1[col]) and pd.api.types.is_numeric_dtype(df2[col])]
                 
                 current_app.logger.info(f"Found {len(numerical_cols)} common numerical columns: {numerical_cols}")
+                current_app.logger.info(f"Common columns: {common_columns}")
+                current_app.logger.info(f"Dataset 1 columns: {list(df1.columns)}")
+                current_app.logger.info(f"Dataset 2 columns: {list(df2.columns)}")
+                
+                # Also get all numerical columns from both datasets for separate analysis
+                df1_numerical = [col for col in df1.columns if pd.api.types.is_numeric_dtype(df1[col])]
+                df2_numerical = [col for col in df2.columns if pd.api.types.is_numeric_dtype(df2[col])]
+                
+                current_app.logger.info(f"Dataset 1 numerical columns: {df1_numerical}")
+                current_app.logger.info(f"Dataset 2 numerical columns: {df2_numerical}")
                 
                 for col in numerical_cols[:5]:  # Limit to first 5 for performance
                     try:
@@ -183,38 +193,117 @@ def compare_datasets():
                     except Exception as e:
                         current_app.logger.error(f"Could not generate statistics for column {col}: {str(e)}")
                         
-                # If no numerical columns, add at least basic column type comparison
+                # If no common numerical columns, show statistics for individual numerical columns from each dataset
                 if len(comparison_result['statistical_comparison']) == 0:
-                    for col in common_columns[:5]:  # Show first 5 common columns regardless of type
+                    current_app.logger.info("No common numerical columns found, showing individual dataset statistics")
+                    
+                    # If we have numerical columns in both datasets, show them separately
+                    if df1_numerical and df2_numerical:
+                        # Compare the first numerical column from each dataset
+                        col1 = df1_numerical[0]
+                        col2 = df2_numerical[0]
+                        
                         try:
-                            col1_type = str(df1[col].dtype)
-                            col2_type = str(df2[col].dtype)
-                            col1_unique = int(df1[col].nunique())
-                            col2_unique = int(df2[col].nunique())
+                            col1_clean = df1[col1].dropna()
+                            col2_clean = df2[col2].dropna()
                             
+                            if len(col1_clean) > 0 and len(col2_clean) > 0:
+                                dataset1_stats = {
+                                    'mean': float(col1_clean.mean()) if not pd.isna(col1_clean.mean()) else 0.0,
+                                    'median': float(col1_clean.median()) if not pd.isna(col1_clean.median()) else 0.0,
+                                    'std': float(col1_clean.std()) if not pd.isna(col1_clean.std()) else 0.0,
+                                    'min': float(col1_clean.min()) if not pd.isna(col1_clean.min()) else 0.0,
+                                    'max': float(col1_clean.max()) if not pd.isna(col1_clean.max()) else 0.0,
+                                    'count': len(col1_clean)
+                                }
+                                dataset2_stats = {
+                                    'mean': float(col2_clean.mean()) if not pd.isna(col2_clean.mean()) else 0.0,
+                                    'median': float(col2_clean.median()) if not pd.isna(col2_clean.median()) else 0.0,
+                                    'std': float(col2_clean.std()) if not pd.isna(col2_clean.std()) else 0.0,
+                                    'min': float(col2_clean.min()) if not pd.isna(col2_clean.min()) else 0.0,
+                                    'max': float(col2_clean.max()) if not pd.isna(col2_clean.max()) else 0.0,
+                                    'count': len(col2_clean)
+                                }
+                                
+                                comparison_result['statistical_comparison'].append({
+                                    'column': f"{col1} vs {col2}",
+                                    'comparison_type': 'different_columns',
+                                    'dataset1': {
+                                        'name': f"{datasets[0].filename} ({col1})",
+                                        'statistics': dataset1_stats
+                                    },
+                                    'dataset2': {
+                                        'name': f"{datasets[1].filename} ({col2})",
+                                        'statistics': dataset2_stats
+                                    }
+                                })
+                                current_app.logger.info(f"Generated separate numerical comparison: {col1} vs {col2}")
+                        except Exception as e:
+                            current_app.logger.error(f"Could not generate separate numerical statistics: {str(e)}")
+                    
+                    # Fallback to basic column type comparison for common columns
+                    if len(comparison_result['statistical_comparison']) == 0 and common_columns:
+                        for col in common_columns[:5]:  # Show first 5 common columns regardless of type
+                            try:
+                                col1_type = str(df1[col].dtype)
+                                col2_type = str(df2[col].dtype)
+                                col1_unique = int(df1[col].nunique())
+                                col2_unique = int(df2[col].nunique())
+                                
+                                comparison_result['statistical_comparison'].append({
+                                    'column': col,
+                                    'comparison_type': 'basic_comparison',
+                                    'dataset1': {
+                                        'name': datasets[0].filename,
+                                        'statistics': {
+                                            'data_type': col1_type,
+                                            'unique_values': col1_unique,
+                                            'null_count': int(df1[col].isnull().sum()),
+                                            'total_count': len(df1[col])
+                                        }
+                                    },
+                                    'dataset2': {
+                                        'name': datasets[1].filename,
+                                        'statistics': {
+                                            'data_type': col2_type,
+                                            'unique_values': col2_unique,
+                                            'null_count': int(df2[col].isnull().sum()),
+                                            'total_count': len(df2[col])
+                                        }
+                                    }
+                                })
+                            except Exception as e:
+                                current_app.logger.error(f"Could not generate basic statistics for column {col}: {str(e)}")
+                    
+                    # Final fallback - show general dataset info if nothing else works
+                    if len(comparison_result['statistical_comparison']) == 0:
+                        try:
                             comparison_result['statistical_comparison'].append({
-                                'column': col,
+                                'column': 'Dataset Overview',
+                                'comparison_type': 'overview',
                                 'dataset1': {
                                     'name': datasets[0].filename,
                                     'statistics': {
-                                        'data_type': col1_type,
-                                        'unique_values': col1_unique,
-                                        'null_count': int(df1[col].isnull().sum()),
-                                        'total_count': len(df1[col])
+                                        'total_columns': len(df1.columns),
+                                        'numerical_columns': len(df1_numerical),
+                                        'categorical_columns': len([col for col in df1.columns if df1[col].dtype == 'object']),
+                                        'total_rows': len(df1),
+                                        'memory_usage': f"{df1.memory_usage(deep=True).sum() / 1024:.1f} KB"
                                     }
                                 },
                                 'dataset2': {
                                     'name': datasets[1].filename,
                                     'statistics': {
-                                        'data_type': col2_type,
-                                        'unique_values': col2_unique,
-                                        'null_count': int(df2[col].isnull().sum()),
-                                        'total_count': len(df2[col])
+                                        'total_columns': len(df2.columns),
+                                        'numerical_columns': len(df2_numerical),
+                                        'categorical_columns': len([col for col in df2.columns if df2[col].dtype == 'object']),
+                                        'total_rows': len(df2),
+                                        'memory_usage': f"{df2.memory_usage(deep=True).sum() / 1024:.1f} KB"
                                     }
                                 }
                             })
                         except Exception as e:
-                            current_app.logger.error(f"Could not generate basic statistics for column {col}: {str(e)}")
+                            current_app.logger.error(f"Could not generate overview statistics: {str(e)}")
                         
             except Exception as e:
                 logging.warning(f"Could not perform detailed schema comparison: {str(e)}")

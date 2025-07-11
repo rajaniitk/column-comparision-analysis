@@ -1815,6 +1815,36 @@ body.dark-theme .error {
     margin-left: 10px;
 }
 
+.no-stats-message {
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 30px;
+    text-align: center;
+    margin: 20px 0;
+}
+
+.no-stats-message h4 {
+    color: #495057;
+    margin: 0 0 15px 0;
+}
+
+.no-stats-message p {
+    color: #6c757d;
+    margin-bottom: 15px;
+}
+
+.no-stats-message ul {
+    text-align: left;
+    display: inline-block;
+    color: #6c757d;
+    margin-bottom: 15px;
+}
+
+.no-stats-message li {
+    margin-bottom: 5px;
+}
+
 .statistics-table {
     width: 100%;
     border-collapse: collapse;
