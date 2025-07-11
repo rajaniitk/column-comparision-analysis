@@ -14,7 +14,7 @@ class Comparison:
          self.data_processor = DataProcessor()
          self.logger = logging.getLogger(__name__)
      
-     def compare_columns(self, dataset_id, columns, comparison_type='statistical'):
+     def compare_columns(self, dataset_id, columns, comparison_type='auto'):
          """Compare multiple columns using specified comparison type"""
          try:
              dataset = Dataset.query.get_or_404(dataset_id)
@@ -28,9 +28,35 @@ class Comparison:
              if missing_cols:
                  return create_response(False, error=f"Columns not found: {missing_cols}")
              
-             results = {}
+             # Auto-detect comparison type if not specified
+             if comparison_type == 'auto':
+                 col1_data = df[columns[0]].dropna()
+                 col2_data = df[columns[1]].dropna()
+                 
+                 is_numeric1 = pd.api.types.is_numeric_dtype(col1_data)
+                 is_numeric2 = pd.api.types.is_numeric_dtype(col2_data)
+                 
+                 if is_numeric1 and is_numeric2:
+                     # Both numeric - use numerical comparison
+                     return self.compare_numerical(dataset_id, columns[0], columns[1])
+                 elif not is_numeric1 and not is_numeric2:
+                     # Both categorical - use categorical comparison (chi-square)
+                     return self.compare_categorical(dataset_id, columns[0], columns[1])
+                 else:
+                     # Mixed types - use mixed comparison (ANOVA)
+                     numeric_col = columns[0] if is_numeric1 else columns[1]
+                     categorical_col = columns[1] if is_numeric1 else columns[0]
+                     return self.compare_mixed(dataset_id, numeric_col, categorical_col)
              
-             if comparison_type == 'statistical':
+             # Manual comparison type specification
+             results = {}
+             if comparison_type == 'numerical':
+                 return self.compare_numerical(dataset_id, columns[0], columns[1])
+             elif comparison_type == 'categorical':
+                 return self.compare_categorical(dataset_id, columns[0], columns[1])
+             elif comparison_type == 'mixed':
+                 return self.compare_mixed(dataset_id, columns[0], columns[1])
+             elif comparison_type == 'statistical':
                  results = self._statistical_comparison(df, columns)
              elif comparison_type == 'correlation':
                  results = self._correlation_comparison(df, columns)
@@ -80,49 +106,96 @@ class Comparison:
              if len(clean_data) < 3:
                  return create_response(False, error="Insufficient data for comparison")
              
-             # Perform statistical tests
-             correlation, p_value_corr = stats.pearsonr(clean_data[column1], clean_data[column2])
-             spearman_corr, p_value_spearman = stats.spearmanr(clean_data[column1], clean_data[column2])
+             # Perform statistical tests with proper error handling
+             try:
+                 correlation, p_value_corr = stats.pearsonr(clean_data[column1], clean_data[column2])
+                 # Handle NaN p-values
+                 if pd.isna(p_value_corr):
+                     p_value_corr = 1.0
+             except Exception:
+                 correlation, p_value_corr = 0.0, 1.0
+                 
+             try:
+                 spearman_corr, p_value_spearman = stats.spearmanr(clean_data[column1], clean_data[column2])
+                 if pd.isna(p_value_spearman):
+                     p_value_spearman = 1.0
+             except Exception:
+                 spearman_corr, p_value_spearman = 0.0, 1.0
              
              # T-test for difference in means
-             t_stat, p_value_ttest = stats.ttest_ind(clean_data[column1], clean_data[column2])
+             try:
+                 t_stat, p_value_ttest = stats.ttest_ind(clean_data[column1], clean_data[column2])
+                 if pd.isna(p_value_ttest):
+                     p_value_ttest = 1.0
+             except Exception:
+                 t_stat, p_value_ttest = 0.0, 1.0
              
              # Kolmogorov-Smirnov test for distribution difference
-             ks_stat, p_value_ks = stats.ks_2samp(clean_data[column1], clean_data[column2])
+             try:
+                 ks_stat, p_value_ks = stats.ks_2samp(clean_data[column1], clean_data[column2])
+                 if pd.isna(p_value_ks):
+                     p_value_ks = 1.0
+             except Exception:
+                 ks_stat, p_value_ks = 0.0, 1.0
              
              # Effect size (Cohen's d)
              cohens_d = self._calculate_cohens_d(clean_data[column1], clean_data[column2])
              
-             # Basic statistics
-             stats1 = get_safe_stats(clean_data, [column1])[column1]
-             stats2 = get_safe_stats(clean_data, [column2])[column2]
+             # Basic statistics with proper error handling
+             try:
+                 stats1 = {
+                     'count': len(clean_data[column1]),
+                     'mean': float(clean_data[column1].mean()),
+                     'median': float(clean_data[column1].median()),
+                     'std': float(clean_data[column1].std()),
+                     'min': float(clean_data[column1].min()),
+                     'max': float(clean_data[column1].max()),
+                     'unique_values': int(clean_data[column1].nunique())
+                 }
+             except Exception as e:
+                 self.logger.warning(f"Error calculating stats for {column1}: {str(e)}")
+                 stats1 = {'error': 'Unable to calculate statistics'}
+                 
+             try:
+                 stats2 = {
+                     'count': len(clean_data[column2]),
+                     'mean': float(clean_data[column2].mean()),
+                     'median': float(clean_data[column2].median()),
+                     'std': float(clean_data[column2].std()),
+                     'min': float(clean_data[column2].min()),
+                     'max': float(clean_data[column2].max()),
+                     'unique_values': int(clean_data[column2].nunique())
+                 }
+             except Exception as e:
+                 self.logger.warning(f"Error calculating stats for {column2}: {str(e)}")
+                 stats2 = {'error': 'Unable to calculate statistics'}
              
              results = {
                  'comparison_type': 'numerical',
                  'columns': [column1, column2],
                  'sample_size': len(clean_data),
                  'pearson_correlation': {
-                     'coefficient': correlation,
-                     'p_value': p_value_corr,
+                     'coefficient': float(correlation) if not pd.isna(correlation) else 0.0,
+                     'p_value': float(p_value_corr),
                      'interpretation': self._interpret_correlation(correlation)
                  },
                  'spearman_correlation': {
-                     'coefficient': spearman_corr,
-                     'p_value': p_value_spearman,
+                     'coefficient': float(spearman_corr) if not pd.isna(spearman_corr) else 0.0,
+                     'p_value': float(p_value_spearman),
                      'interpretation': self._interpret_correlation(spearman_corr)
                  },
                  'difference_test': {
-                     't_statistic': t_stat,
-                     'p_value': p_value_ttest,
+                     't_statistic': float(t_stat) if not pd.isna(t_stat) else 0.0,
+                     'p_value': float(p_value_ttest),
                      'interpretation': self._interpret_p_value(p_value_ttest, "means")
                  },
                  'distribution_test': {
-                     'ks_statistic': ks_stat,
-                     'p_value': p_value_ks,
+                     'ks_statistic': float(ks_stat) if not pd.isna(ks_stat) else 0.0,
+                     'p_value': float(p_value_ks),
                      'interpretation': self._interpret_p_value(p_value_ks, "distributions")
                  },
                  'effect_size': {
-                     'cohens_d': cohens_d,
+                     'cohens_d': float(cohens_d) if not pd.isna(cohens_d) else 0.0,
                      'interpretation': self._interpret_cohens_d(cohens_d)
                  },
                  'descriptive_stats': {
@@ -148,50 +221,115 @@ class Comparison:
              if column1 not in df.columns or column2 not in df.columns:
                  return create_response(False, error="One or more columns not found")
              
-             # Remove missing values
+             # Remove missing values and convert to string
              clean_data = df[[column1, column2]].dropna()
+             clean_data[column1] = clean_data[column1].astype(str)
+             clean_data[column2] = clean_data[column2].astype(str)
              
              if len(clean_data) < 5:
                  return create_response(False, error="Insufficient data for comparison")
              
-             # Create contingency table
-             contingency_table = pd.crosstab(clean_data[column1], clean_data[column2])
-             
-             # Chi-square test
-             chi2, p_value, dof, expected = stats.chi2_contingency(contingency_table)
+             # Create contingency table with proper error handling
+             try:
+                 contingency_table = pd.crosstab(clean_data[column1], clean_data[column2])
+                 
+                 # Check if contingency table is valid for chi-square test
+                 if contingency_table.size == 0:
+                     return create_response(False, error="Unable to create contingency table")
+                 
+                 # Chi-square test with proper error handling
+                 try:
+                     chi2, p_value, dof, expected = stats.chi2_contingency(contingency_table)
+                     if pd.isna(chi2):
+                         chi2 = 0.0
+                     if pd.isna(p_value):
+                         p_value = 1.0
+                 except ValueError as e:
+                     # Handle cases where chi-square test is not applicable
+                     self.logger.warning(f"Chi-square test failed: {str(e)}")
+                     chi2, p_value, dof, expected = 0.0, 1.0, 0, None
+                 
+             except Exception as e:
+                 self.logger.warning(f"Error creating contingency table: {str(e)}")
+                 return create_response(False, error=f"Unable to perform categorical comparison: {str(e)}")
              
              # Cramér's V (effect size)
              cramers_v = self._calculate_cramers_v(chi2, contingency_table)
              
-             # Mutual information
-             le1 = LabelEncoder()
-             le2 = LabelEncoder()
-             encoded1 = le1.fit_transform(clean_data[column1].astype(str))
-             encoded2 = le2.fit_transform(clean_data[column2].astype(str))
-             mutual_info = mutual_info_classif(encoded1.reshape(-1, 1), encoded2)[0]
+             # Mutual information with proper error handling
+             try:
+                 from sklearn.preprocessing import LabelEncoder
+                 le1 = LabelEncoder()
+                 le2 = LabelEncoder()
+                 encoded1 = le1.fit_transform(clean_data[column1])
+                 encoded2 = le2.fit_transform(clean_data[column2])
+                 mutual_info = mutual_info_classif(encoded1.reshape(-1, 1), encoded2)[0]
+                 if pd.isna(mutual_info):
+                     mutual_info = 0.0
+             except Exception as e:
+                 self.logger.warning(f"Error calculating mutual information: {str(e)}")
+                 mutual_info = 0.0
+             
+             # Value counts for each column
+             try:
+                 unique_values = {
+                     column1: int(clean_data[column1].nunique()),
+                     column2: int(clean_data[column2].nunique())
+                 }
+                 
+                 # Most frequent values
+                 most_frequent = {
+                     column1: str(clean_data[column1].mode().iloc[0]) if len(clean_data[column1].mode()) > 0 else 'N/A',
+                     column2: str(clean_data[column2].mode().iloc[0]) if len(clean_data[column2].mode()) > 0 else 'N/A'
+                 }
+                 
+                 # Frequency counts
+                 freq_counts = {
+                     column1: int(clean_data[column1].value_counts().iloc[0]) if len(clean_data) > 0 else 0,
+                     column2: int(clean_data[column2].value_counts().iloc[0]) if len(clean_data) > 0 else 0
+                 }
+                 
+             except Exception as e:
+                 self.logger.warning(f"Error calculating value statistics: {str(e)}")
+                 unique_values = {column1: 0, column2: 0}
+                 most_frequent = {column1: 'N/A', column2: 'N/A'}
+                 freq_counts = {column1: 0, column2: 0}
              
              results = {
                  'comparison_type': 'categorical',
                  'columns': [column1, column2],
                  'sample_size': len(clean_data),
-                 'contingency_table': contingency_table.to_dict(),
+                 'contingency_table': contingency_table.to_dict() if contingency_table.size > 0 else {},
                  'chi_square_test': {
-                     'chi2_statistic': chi2,
-                     'p_value': p_value,
-                     'degrees_of_freedom': dof,
+                     'chi2_statistic': float(chi2),
+                     'p_value': float(p_value),
+                     'degrees_of_freedom': int(dof) if dof is not None else 0,
                      'interpretation': self._interpret_p_value(p_value, "independence")
                  },
                  'effect_size': {
-                     'cramers_v': cramers_v,
+                     'cramers_v': float(cramers_v) if not pd.isna(cramers_v) else 0.0,
                      'interpretation': self._interpret_cramers_v(cramers_v)
                  },
                  'mutual_information': {
-                     'score': mutual_info,
+                     'score': float(mutual_info),
                      'interpretation': self._interpret_mutual_info(mutual_info)
                  },
-                 'unique_values': {
-                     column1: int(clean_data[column1].nunique()),
-                     column2: int(clean_data[column2].nunique())
+                 'unique_values': unique_values,
+                 'most_frequent_values': most_frequent,
+                 'frequency_counts': freq_counts,
+                 'descriptive_stats': {
+                     column1: {
+                         'count': len(clean_data[column1]),
+                         'unique_values': unique_values[column1],
+                         'most_frequent': most_frequent[column1],
+                         'most_frequent_count': freq_counts[column1]
+                     },
+                     column2: {
+                         'count': len(clean_data[column2]),
+                         'unique_values': unique_values[column2],
+                         'most_frequent': most_frequent[column2],
+                         'most_frequent_count': freq_counts[column2]
+                     }
                  },
                  'recommendations': self._get_categorical_recommendations(p_value, cramers_v)
              }
@@ -222,39 +360,83 @@ class Comparison:
              if len(clean_data) < 5:
                  return create_response(False, error="Insufficient data for comparison")
              
-             # Group statistics
-             group_stats = clean_data.groupby(categorical_column)[numerical_column].agg([
-                 'count', 'mean', 'std', 'min', 'max', 'median'
-             ]).round(4)
+             # Convert categorical column to string to handle mixed types
+             clean_data[categorical_column] = clean_data[categorical_column].astype(str)
              
-             # ANOVA test
-             groups = [group[numerical_column].values for name, group in clean_data.groupby(categorical_column)]
-             f_stat, p_value_anova = stats.f_oneway(*groups)
+             # Group statistics with proper error handling
+             try:
+                 group_stats_raw = clean_data.groupby(categorical_column)[numerical_column].agg([
+                     'count', 'mean', 'std', 'min', 'max', 'median'
+                 ])
+                 
+                 # Convert to dictionary format with proper handling of NaN values
+                 group_stats = {}
+                 for group_name, stats in group_stats_raw.iterrows():
+                     group_stats[str(group_name)] = {
+                         'count': int(stats['count']) if not pd.isna(stats['count']) else 0,
+                         'mean': float(stats['mean']) if not pd.isna(stats['mean']) else 0.0,
+                         'std': float(stats['std']) if not pd.isna(stats['std']) else 0.0,
+                         'min': float(stats['min']) if not pd.isna(stats['min']) else 0.0,
+                         'max': float(stats['max']) if not pd.isna(stats['max']) else 0.0,
+                         'median': float(stats['median']) if not pd.isna(stats['median']) else 0.0
+                     }
+             except Exception as e:
+                 self.logger.warning(f"Error calculating group statistics: {str(e)}")
+                 group_stats = {}
+             
+             # ANOVA test with proper error handling
+             try:
+                 groups = [group[numerical_column].values for name, group in clean_data.groupby(categorical_column)]
+                 groups = [g for g in groups if len(g) > 0]  # Remove empty groups
+                 
+                 if len(groups) < 2:
+                     f_stat, p_value_anova = 0.0, 1.0
+                 else:
+                     f_stat, p_value_anova = stats.f_oneway(*groups)
+                     if pd.isna(f_stat):
+                         f_stat = 0.0
+                     if pd.isna(p_value_anova):
+                         p_value_anova = 1.0
+             except Exception as e:
+                 self.logger.warning(f"Error in ANOVA test: {str(e)}")
+                 f_stat, p_value_anova = 0.0, 1.0
+                 groups = []
              
              # Effect size (eta squared)
              eta_squared = self._calculate_eta_squared(clean_data, numerical_column, categorical_column)
              
              # Kruskal-Wallis test (non-parametric alternative)
-             h_stat, p_value_kw = stats.kruskal(*groups)
+             try:
+                 if len(groups) >= 2:
+                     h_stat, p_value_kw = stats.kruskal(*groups)
+                     if pd.isna(h_stat):
+                         h_stat = 0.0
+                     if pd.isna(p_value_kw):
+                         p_value_kw = 1.0
+                 else:
+                     h_stat, p_value_kw = 0.0, 1.0
+             except Exception as e:
+                 self.logger.warning(f"Error in Kruskal-Wallis test: {str(e)}")
+                 h_stat, p_value_kw = 0.0, 1.0
              
              results = {
                  'comparison_type': 'mixed',
                  'numerical_column': numerical_column,
                  'categorical_column': categorical_column,
                  'sample_size': len(clean_data),
-                 'group_statistics': group_stats.to_dict(),
+                 'group_statistics': group_stats,
                  'anova_test': {
-                     'f_statistic': f_stat,
-                     'p_value': p_value_anova,
+                     'f_statistic': float(f_stat),
+                     'p_value': float(p_value_anova),
                      'interpretation': self._interpret_p_value(p_value_anova, "group differences")
                  },
                  'kruskal_wallis_test': {
-                     'h_statistic': h_stat,
-                     'p_value': p_value_kw,
+                     'h_statistic': float(h_stat),
+                     'p_value': float(p_value_kw),
                      'interpretation': self._interpret_p_value(p_value_kw, "group differences (non-parametric)")
                  },
                  'effect_size': {
-                     'eta_squared': eta_squared,
+                     'eta_squared': float(eta_squared) if not pd.isna(eta_squared) else 0.0,
                      'interpretation': self._interpret_eta_squared(eta_squared)
                  },
                  'group_count': len(groups),

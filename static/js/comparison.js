@@ -326,7 +326,8 @@ document.addEventListener('DOMContentLoaded', function() {
             });
 
             if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+                const errorText = await response.text();
+                throw new Error(`HTTP ${response.status}: ${errorText}`);
             }
 
             const data = await response.json();
@@ -337,19 +338,11 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         } catch (error) {
             console.error('Error comparing datasets:', error);
-            // Fallback to basic comparison using stored data
-            const datasets = getStoredDatasets();
-            const selectedDatasets = datasets.filter(d => datasetIds.includes(d.id.toString()));
             
+            // Return error structure instead of dummy data
             return {
                 overview: {
-                    datasets: selectedDatasets.map(d => ({
-                        name: d.name || d.filename,
-                        rows: d.rows,
-                        columns: d.columns,
-                        memory_usage: d.file_size ? `${(d.file_size / (1024*1024)).toFixed(1)} MB` : 'Unknown',
-                        missing_values: 'Unknown'
-                    }))
+                    datasets: []
                 },
                 schema_comparison: {
                     common_columns: [],
@@ -358,7 +351,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 },
                 statistical_comparison: [],
                 quality_comparison: [],
-                error: 'Detailed comparison unavailable - API error'
+                error: `Dataset comparison failed: ${error.message}. Please check if the datasets are properly uploaded and accessible.`
             };
         }
     }
@@ -367,6 +360,27 @@ document.addEventListener('DOMContentLoaded', function() {
     
     function displayDatasetComparison(comparison) {
         const container = document.getElementById('comparison-results');
+        
+        // Check if there's an error or no data
+        if (comparison.error || !comparison.overview || !comparison.overview.datasets || comparison.overview.datasets.length === 0) {
+            container.innerHTML = `
+                <div class="comparison-error">
+                    <h3>Dataset Comparison Error</h3>
+                    <p>${comparison.error || 'No datasets found or unable to load dataset data.'}</p>
+                    <div class="error-suggestions">
+                        <h4>Possible solutions:</h4>
+                        <ul>
+                            <li>Ensure both datasets are properly uploaded and accessible</li>
+                            <li>Check that the datasets contain valid data</li>
+                            <li>Try refreshing the page and selecting the datasets again</li>
+                            <li>Verify that the dataset files are not corrupted</li>
+                        </ul>
+                    </div>
+                </div>
+            `;
+            container.style.display = 'block';
+            return;
+        }
         
         let html = `
             <div class="comparison-header">
@@ -699,9 +713,17 @@ document.addEventListener('DOMContentLoaded', function() {
                     stats: comparison.descriptive_stats[comparison.columns[1]]
                 },
                 tests: {
-                    correlation: comparison.pearson_correlation?.coefficient?.toFixed(4) || 'N/A',
-                    t_test_p_value: comparison.difference_test?.p_value?.toFixed(4) || 'N/A',
-                    ks_test_p_value: comparison.distribution_test?.p_value?.toFixed(4) || 'N/A'
+                    'Pearson Correlation': `${comparison.pearson_correlation?.coefficient?.toFixed(4) || 'N/A'} (p=${comparison.pearson_correlation?.p_value?.toFixed(4) || 'N/A'})`,
+                    'Spearman Correlation': `${comparison.spearman_correlation?.coefficient?.toFixed(4) || 'N/A'} (p=${comparison.spearman_correlation?.p_value?.toFixed(4) || 'N/A'})`,
+                    'T-test P-value': comparison.difference_test?.p_value?.toFixed(4) || 'N/A',
+                    'KS Test P-value': comparison.distribution_test?.p_value?.toFixed(4) || 'N/A',
+                    'Effect Size (Cohen\'s d)': comparison.effect_size?.cohens_d?.toFixed(4) || 'N/A'
+                },
+                interpretation: {
+                    correlation: comparison.pearson_correlation?.interpretation || 'N/A',
+                    difference: comparison.difference_test?.interpretation || 'N/A',
+                    distribution: comparison.distribution_test?.interpretation || 'N/A',
+                    effect: comparison.effect_size?.interpretation || 'N/A'
                 }
             };
         } else if (comparison.comparison_type === 'categorical') {
@@ -710,28 +732,115 @@ document.addEventListener('DOMContentLoaded', function() {
                 column1: {
                     dataset: 'Current Dataset',
                     column: comparison.columns[0],
-                    stats: {
-                        count: comparison.sample_size,
-                        unique_values: comparison.unique_values[comparison.columns[0]]
-                    }
+                    stats: comparison.descriptive_stats[comparison.columns[0]]
                 },
                 column2: {
                     dataset: 'Current Dataset',
                     column: comparison.columns[1], 
-                    stats: {
-                        count: comparison.sample_size,
-                        unique_values: comparison.unique_values[comparison.columns[1]]
-                    }
+                    stats: comparison.descriptive_stats[comparison.columns[1]]
                 },
                 tests: {
-                    chi_square: comparison.chi_square_test?.chi2_statistic?.toFixed(4) || 'N/A',
-                    p_value: comparison.chi_square_test?.p_value?.toFixed(4) || 'N/A',
-                    cramers_v: comparison.effect_size?.cramers_v?.toFixed(4) || 'N/A'
+                    'Chi-Square Statistic': comparison.chi_square_test?.chi2_statistic?.toFixed(4) || 'N/A',
+                    'Chi-Square P-value': comparison.chi_square_test?.p_value?.toFixed(4) || 'N/A',
+                    'Degrees of Freedom': comparison.chi_square_test?.degrees_of_freedom || 'N/A',
+                    'Cramér\'s V': comparison.effect_size?.cramers_v?.toFixed(4) || 'N/A',
+                    'Mutual Information': comparison.mutual_information?.score?.toFixed(4) || 'N/A'
+                },
+                interpretation: {
+                    independence: comparison.chi_square_test?.interpretation || 'N/A',
+                    association: comparison.effect_size?.interpretation || 'N/A',
+                    mutual_info: comparison.mutual_information?.interpretation || 'N/A'
                 }
+            };
+        } else if (comparison.comparison_type === 'mixed') {
+            // Mixed comparison (ANOVA) - used for segment analysis
+            displayData = {
+                type: 'segment_analysis',
+                numerical_column: comparison.numerical_column,
+                categorical_column: comparison.categorical_column,
+                group_statistics: comparison.group_statistics,
+                tests: {
+                    'ANOVA F-statistic': comparison.anova_test?.f_statistic?.toFixed(4) || 'N/A',
+                    'ANOVA P-value': comparison.anova_test?.p_value?.toFixed(4) || 'N/A',
+                    'Kruskal-Wallis H': comparison.kruskal_wallis_test?.h_statistic?.toFixed(4) || 'N/A',
+                    'KW P-value': comparison.kruskal_wallis_test?.p_value?.toFixed(4) || 'N/A',
+                    'Effect Size (η²)': comparison.effect_size?.eta_squared?.toFixed(4) || 'N/A'
+                },
+                interpretation: {
+                    anova: comparison.anova_test?.interpretation || 'N/A',
+                    kruskal: comparison.kruskal_wallis_test?.interpretation || 'N/A',
+                    effect: comparison.effect_size?.interpretation || 'N/A'
+                },
+                sample_size: comparison.sample_size,
+                group_count: comparison.group_count
             };
         } else {
             // Fallback or error case
             displayData = comparison;
+        }
+        
+        // Handle segment analysis display differently
+        if (displayData.type === 'segment_analysis') {
+            const html = `
+                <div class="segment-comparison-results">
+                    <h3>Segment Analysis Results</h3>
+                    <p>Analyzing <strong>${displayData.numerical_column}</strong> across segments of <strong>${displayData.categorical_column}</strong></p>
+                    
+                    <div class="comparison-summary">
+                        <div class="summary-cards">
+                            <div class="summary-card">
+                                <h4>Sample Size</h4>
+                                <span>${displayData.sample_size || 'N/A'}</span>
+                            </div>
+                            <div class="summary-card">
+                                <h4>Groups Found</h4>
+                                <span>${displayData.group_count || 'N/A'}</span>
+                            </div>
+                            <div class="summary-card">
+                                <h4>ANOVA P-value</h4>
+                                <span>${displayData.tests['ANOVA P-value']}</span>
+                            </div>
+                            <div class="summary-card">
+                                <h4>Effect Size (η²)</h4>
+                                <span>${displayData.tests['Effect Size (η²)']}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="group-statistics-section">
+                        <h4>Group Statistics</h4>
+                        ${generateGroupStatisticsTable(displayData.group_statistics)}
+                    </div>
+                    
+                    <div class="statistical-tests">
+                        <h4>Statistical Tests</h4>
+                        <div class="test-results">
+                            ${Object.entries(displayData.tests).map(([testName, value]) => `
+                                <div class="test-result">
+                                    <span class="test-name">${testName}:</span>
+                                    <span class="test-value">${value}</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+
+                    <div class="interpretation-section">
+                        <h4>Interpretation</h4>
+                        <div class="interpretation-grid">
+                            ${Object.entries(displayData.interpretation).map(([key, value]) => `
+                                <div class="interpretation-item">
+                                    <span class="interpretation-label">${key.toUpperCase()}:</span>
+                                    <span class="interpretation-value">${value}</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            container.innerHTML = html;
+            container.style.display = 'block';
+            return;
         }
         
         // Safely handle undefined comparison data
@@ -822,8 +931,22 @@ document.addEventListener('DOMContentLoaded', function() {
                         <div class="test-results">
                             ${Object.entries(displayData.tests).map(([testName, value]) => `
                                 <div class="test-result">
-                                    <span class="test-name">${testName.replace('_', ' ').toUpperCase()}:</span>
+                                    <span class="test-name">${testName}:</span>
                                     <span class="test-value">${value}</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                ` : ''}
+
+                ${displayData.interpretation ? `
+                    <div class="interpretation-section">
+                        <h4>Interpretation</h4>
+                        <div class="interpretation-grid">
+                            ${Object.entries(displayData.interpretation).map(([key, value]) => `
+                                <div class="interpretation-item">
+                                    <span class="interpretation-label">${key.toUpperCase()}:</span>
+                                    <span class="interpretation-value">${value}</span>
                                 </div>
                             `).join('')}
                         </div>
@@ -1034,7 +1157,8 @@ document.addEventListener('DOMContentLoaded', function() {
             const data = await response.json();
             
             if (data.success) {
-                displaySegmentComparison(data.data || data, segmentColumn, targetColumn);
+                // Use the improved displayColumnComparison function
+                displayColumnComparison(data.data || data);
             } else {
                 throw new Error(data.error || 'Failed to compare segments');
             }
@@ -1045,77 +1169,6 @@ document.addEventListener('DOMContentLoaded', function() {
         } finally {
             hideLoading();
         }
-    }
-    
-    function displaySegmentComparison(result, segmentColumn, targetColumn) {
-        const container = document.getElementById('comparison-results');
-        
-        // Extract group statistics if available
-        const groupStats = result.group_statistics || {};
-        const anovaTest = result.anova_test || {};
-        const effectSize = result.effect_size || {};
-        
-        const html = `
-            <div class="segment-comparison-results">
-                <h3>Segment Comparison Results</h3>
-                <p>Comparing <strong>${targetColumn}</strong> across segments of <strong>${segmentColumn}</strong></p>
-                
-                <div class="comparison-summary">
-                    <div class="summary-cards">
-                        <div class="summary-card">
-                            <h4>Groups Found</h4>
-                            <span>${result.group_count || Object.keys(groupStats).length || 'Unknown'}</span>
-                        </div>
-                        <div class="summary-card">
-                            <h4>ANOVA F-statistic</h4>
-                            <span>${anovaTest.f_statistic ? anovaTest.f_statistic.toFixed(4) : 'N/A'}</span>
-                        </div>
-                        <div class="summary-card">
-                            <h4>P-value</h4>
-                            <span>${anovaTest.p_value ? anovaTest.p_value.toFixed(4) : 'N/A'}</span>
-                        </div>
-                        <div class="summary-card">
-                            <h4>Effect Size (η²)</h4>
-                            <span>${effectSize.eta_squared ? effectSize.eta_squared.toFixed(4) : 'N/A'}</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="detailed-comparison">
-                    <div class="comparison-tabs">
-                        <button class="comp-tab-button active" data-tab="group-stats">Group Statistics</button>
-                        <button class="comp-tab-button" data-tab="tests">Statistical Tests</button>
-                        <button class="comp-tab-button" data-tab="interpretation">Interpretation</button>
-                    </div>
-
-                    <div id="group-stats" class="comp-tab-content active">
-                        <h4>Group Statistics by ${segmentColumn}</h4>
-                        ${generateGroupStatsHTML(groupStats)}
-                    </div>
-
-                    <div id="tests" class="comp-tab-content">
-                        <h4>Statistical Test Results</h4>
-                        ${generateTestResultsHTML(result)}
-                    </div>
-
-                    <div id="interpretation" class="comp-tab-content">
-                        <h4>Interpretation & Recommendations</h4>
-                        ${generateInterpretationHTML(result)}
-                    </div>
-                </div>
-            </div>
-        `;
-        
-        container.innerHTML = html;
-        container.style.display = 'block';
-        
-        // Reattach tab event listeners for segment comparison
-        const tabButtons = container.querySelectorAll('.comp-tab-button');
-        tabButtons.forEach(button => {
-            button.addEventListener('click', (e) => {
-                switchTab(e.target.getAttribute('data-tab'));
-            });
-        });
     }
     
     function generateGroupStatsHTML(groupStats) {
@@ -1229,6 +1282,46 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         
         html += '</div>';
+        return html;
+    }
+
+    function generateGroupStatisticsTable(groupStats) {
+        if (!groupStats || Object.keys(groupStats).length === 0) {
+            return '<p class="no-data">No group statistics available. This may occur if there is insufficient data or the groups contain only missing values.</p>';
+        }
+        
+        let html = `
+            <div class="group-stats-table-container">
+                <table class="group-stats-table">
+                    <thead>
+                        <tr>
+                            <th>Group</th>
+                            <th>Count</th>
+                            <th>Mean</th>
+                            <th>Std Dev</th>
+                            <th>Min</th>
+                            <th>Max</th>
+                            <th>Median</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+        
+        Object.entries(groupStats).forEach(([group, stats]) => {
+            html += `
+                <tr>
+                    <td class="group-name"><strong>${group}</strong></td>
+                    <td>${stats.count || 'N/A'}</td>
+                    <td>${typeof stats.mean === 'number' ? stats.mean.toFixed(3) : 'N/A'}</td>
+                    <td>${typeof stats.std === 'number' ? stats.std.toFixed(3) : 'N/A'}</td>
+                    <td>${typeof stats.min === 'number' ? stats.min.toFixed(3) : 'N/A'}</td>
+                    <td>${typeof stats.max === 'number' ? stats.max.toFixed(3) : 'N/A'}</td>
+                    <td>${typeof stats.median === 'number' ? stats.median.toFixed(3) : 'N/A'}</td>
+                </tr>
+            `;
+        });
+        
+        html += '</tbody></table></div>';
         return html;
     }
 });
