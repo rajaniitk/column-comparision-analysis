@@ -1,4 +1,4 @@
-THIS SHOULD BE A LINTER ERRORdocument.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', function() {
     // Global variables
     let selectedDatasets = [];
     let selectedColumns = [];
@@ -371,6 +371,8 @@ THIS SHOULD BE A LINTER ERRORdocument.addEventListener('DOMContentLoaded', funct
     
     function displayDatasetComparison(comparison) {
         console.log('Displaying dataset comparison:', comparison);
+        console.log('Statistical comparison in display function:', comparison.statistical_comparison);
+        console.log('Statistical comparison length in display:', comparison.statistical_comparison ? comparison.statistical_comparison.length : 'undefined');
         
         const container = document.getElementById('comparison-results');
         
@@ -436,10 +438,19 @@ THIS SHOULD BE A LINTER ERRORdocument.addEventListener('DOMContentLoaded', funct
         container.innerHTML = html;
         container.style.display = 'block';
         
+        // Check if the statistics tab content was created
+        const statsTab = document.getElementById('statistics');
+        console.log('Statistics tab element:', statsTab);
+        console.log('Statistics tab innerHTML length:', statsTab ? statsTab.innerHTML.length : 'not found');
+        
         // Reattach tab event listeners
         const tabButtons = container.querySelectorAll('.comp-tab-button');
-        tabButtons.forEach(button => {
+        console.log('Found tab buttons:', tabButtons.length);
+        tabButtons.forEach((button, index) => {
+            const tabName = button.getAttribute('data-tab');
+            console.log(`Tab button ${index}: ${button.textContent} -> ${tabName}`);
             button.addEventListener('click', (e) => {
+                console.log('Tab button clicked:', e.target.textContent, 'data-tab:', e.target.getAttribute('data-tab'));
                 switchTab(e.target.getAttribute('data-tab'));
             });
         });
@@ -528,7 +539,11 @@ THIS SHOULD BE A LINTER ERRORdocument.addEventListener('DOMContentLoaded', funct
     }
     
     function generateStatisticsHTML(statistics) {
+        console.log('generateStatisticsHTML called with:', statistics);
+        console.log('Statistics array length:', statistics ? statistics.length : 'undefined');
+        
         if (!statistics || statistics.length === 0) {
+            console.log('No statistics data - showing message');
             return `
                 <div class="no-stats-message">
                     <h4>No Statistical Comparison Available</h4>
@@ -542,6 +557,8 @@ THIS SHOULD BE A LINTER ERRORdocument.addEventListener('DOMContentLoaded', funct
                 </div>
             `;
         }
+        
+        console.log('Generating statistics HTML for', statistics.length, 'items');
         
         return `
             <div class="statistics-comparison">
@@ -1098,9 +1115,13 @@ THIS SHOULD BE A LINTER ERRORdocument.addEventListener('DOMContentLoaded', funct
     }
     
     function switchTab(tabName) {
+        console.log('switchTab called with:', tabName);
+        
         // Handle both comparison tabs and detailed comparison tabs
         const allTabs = document.querySelectorAll('.comp-tab-content, .tab-pane');
         const allButtons = document.querySelectorAll('.comp-tab-button, .comparison-tab');
+        
+        console.log('Found tabs:', allTabs.length, 'Found buttons:', allButtons.length);
         
         // Hide all tabs
         allTabs.forEach(tab => {
@@ -1113,9 +1134,15 @@ THIS SHOULD BE A LINTER ERRORdocument.addEventListener('DOMContentLoaded', funct
         
         // Show selected tab
         const selectedTab = document.getElementById(tabName);
+        console.log('Selected tab element:', selectedTab);
+        console.log('Selected tab innerHTML length:', selectedTab ? selectedTab.innerHTML.length : 'not found');
+        
         if (selectedTab) {
             selectedTab.classList.add('active');
             selectedTab.style.display = 'block';
+            console.log('Tab should now be visible:', tabName);
+        } else {
+            console.error('Could not find tab with ID:', tabName);
         }
         
         // Activate corresponding button
